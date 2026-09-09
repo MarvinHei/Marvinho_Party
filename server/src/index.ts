@@ -119,6 +119,18 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("lobby:kick", ({ playerId }, ack) => {
+    try {
+      if (!session) throw new Error("Not in a lobby.");
+      const lobby = manager.getLobby(session.lobbyId);
+      if (!lobby) throw new Error("Lobby not found.");
+      lobby.kickPlayer(session.playerId, playerId);
+      ack({ ok: true, data: null });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
   socket.on("wordle:guess", ({ guess }, ack) => {
     try {
       if (!session) throw new Error("Not in a lobby.");

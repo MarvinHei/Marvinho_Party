@@ -300,6 +300,20 @@ input[type="text"]:focus {
 .player-row.offline {
   opacity: 0.45;
 }
+.player-row .kick-btn {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--ink);
+  background: var(--bad);
+  border: 2px solid #0d0b22;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.player-row .kick-btn:hover {
+  filter: brightness(1.15);
+}
 
 /* ---- Game / board ---- */
 .game-wrap {

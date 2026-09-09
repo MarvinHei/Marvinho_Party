@@ -260,6 +260,23 @@ export class Lobby {
     this.spinWheel();
   }
 
+  /** Host-only: remove another player while still in the lobby. */
+  kickPlayer(hostId: string, targetId: string): void {
+    if (!this.isHost(hostId)) throw new Error("Only the host can kick players.");
+    if (this.phase !== "lobby") throw new Error("Players can only be kicked in the lobby.");
+    if (hostId === targetId) throw new Error("You can't kick yourself.");
+    const target = this.players.get(targetId);
+    if (!target) throw new Error("Player not found.");
+    const socketId = target.socketId;
+    // Remove them from the lobby (broadcasts the updated roster).
+    this.removePlayer(targetId);
+    // Notify the kicked client and detach their socket from the room.
+    if (socketId) {
+      this.io.to(socketId).emit("lobby:kicked", { lobbyId: this.id });
+      this.io.sockets.sockets.get(socketId)?.leave(this.id);
+    }
+  }
+
   /** Debug: jump straight into a specific minigame, standalone (no scoring). */
   debugStart(playerId: string, game: MinigameType): void {
     if (!this.isHost(playerId)) throw new Error("Only the host can start.");

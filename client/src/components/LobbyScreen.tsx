@@ -29,6 +29,16 @@ export function LobbyScreen({ seat }: { seat: SeatState }) {
     }
   }
 
+  async function kick(playerId: string) {
+    if (!net) return;
+    store.setSeatError(seat.id, null);
+    try {
+      await net.kick(playerId);
+    } catch (e) {
+      store.setSeatError(seat.id, e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   async function copyInvite() {
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -66,6 +76,15 @@ export function LobbyScreen({ seat }: { seat: SeatState }) {
                 <span style={{ color: "var(--ink-dim)" }}>(you)</span>
               )}
               {p.isHost && <span className="host-tag">HOST</span>}
+              {isHost && p.id !== seat.playerId && (
+                <button
+                  className="kick-btn"
+                  title={`Kick ${p.nickname}`}
+                  onClick={() => kick(p.id)}
+                >
+                  Kick
+                </button>
+              )}
             </div>
           ))}
         </div>

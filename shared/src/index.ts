@@ -520,6 +520,12 @@ export interface ClientToServerEvents {
   /** Host-only: skip the ready vote and start the next minigame now. */
   "lobby:forceStart": (ack: (res: Ack<null>) => void) => void;
 
+  /** Host-only: remove another player from the lobby. */
+  "lobby:kick": (
+    payload: { playerId: string },
+    ack: (res: Ack<null>) => void,
+  ) => void;
+
   /** Debug: start a specific minigame standalone (sandbox, no board scoring). */
   "lobby:debugStart": (
     payload: { game: MinigameType },
@@ -591,6 +597,9 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "lobby:update": (lobby: LobbyView) => void;
+
+  /** Sent to a player the host has removed from the lobby. */
+  "lobby:kicked": (payload: { lobbyId: string }) => void;
 
   "intermission:start": (payload: { lobby: LobbyView }) => void;
 

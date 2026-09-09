@@ -38,6 +38,18 @@ export class Net {
       }));
     });
 
+    this.socket.on("lobby:kicked", () => {
+      // The host removed us — return to the home screen with a notice.
+      this.patch({
+        lobby: null,
+        playerId: null,
+        screen: "home",
+        error: "You were removed from the lobby by the host.",
+        minigame: null,
+        minigamePhase: null,
+      });
+    });
+
     this.socket.on("intermission:start", ({ lobby }) => {
       this.patch({
         lobby,
@@ -266,6 +278,12 @@ export class Net {
   forceStart(): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:forceStart", (res) => this.ack(res, resolve, reject));
+    });
+  }
+
+  kick(playerId: string): Promise<null> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:kick", { playerId }, (res) => this.ack(res, resolve, reject));
     });
   }
 
