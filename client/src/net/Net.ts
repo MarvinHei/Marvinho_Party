@@ -241,7 +241,14 @@ export class Net {
 
   private adopt(data: JoinedLobby): JoinedLobby {
     // Record who this seat is so the UI can recognize itself (host, "you", etc.).
-    this.patch({ playerId: data.playerId, lobby: data.lobby, error: null });
+    // Navigate straight from the ack so we don't depend on a broadcast arriving
+    // (the joining socket can miss the initial lobby:update before joining the room).
+    this.patch({
+      playerId: data.playerId,
+      lobby: data.lobby,
+      error: null,
+      screen: data.lobby.phase === "lobby" ? "lobby" : "game",
+    });
     return data;
   }
 

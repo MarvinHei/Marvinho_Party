@@ -78,6 +78,9 @@ io.on("connection", (socket) => {
       session = { lobbyId: lobby.id, playerId };
       socket.join(lobby.id);
       ack({ ok: true, data: { lobbyId: lobby.id, playerId, lobby: lobby.toView() } });
+      // Re-broadcast now that this socket is in the room, so it (and everyone
+      // else) receives the up-to-date roster.
+      lobby.broadcastLobby();
     } catch (err) {
       fail(ack, err);
     }

@@ -132,6 +132,10 @@ export class Lobby {
     // In sandbox we also allow joining between practice rounds (intermission).
     const joinable = this.phase === "lobby" || (this.sandbox && this.phase === "intermission");
     if (!joinable) throw new Error("Game already started.");
+    // Guard against the same connection joining twice (e.g. a double-click).
+    if ([...this.players.values()].some((p) => p.socketId === player.socketId)) {
+      throw new Error("You are already in this lobby.");
+    }
     if (this.players.size >= GAME_CONFIG.maxPlayers) throw new Error("Lobby is full.");
     const color = PLAYER_COLORS[this.players.size % PLAYER_COLORS.length];
     this.players.set(player.id, {
