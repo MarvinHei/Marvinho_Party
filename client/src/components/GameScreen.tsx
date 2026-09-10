@@ -10,6 +10,7 @@ import { FindWordPanel } from "./FindWordPanel.js";
 import { TetrisPanel } from "./TetrisPanel.js";
 import { PuzzlePanel } from "./PuzzlePanel.js";
 import { CodenamesAssign } from "./CodenamesAssign.js";
+import { ReadyPanel } from "./ReadyPanel.js";
 import { SandboxMenu } from "./SandboxMenu.js";
 import { Wheel } from "./Wheel.js";
 import { Countdown } from "./Countdown.js";
@@ -102,6 +103,11 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   const assigning = seat.minigamePhase === "assigning" && !!seat.assign;
   const countingDown = seat.minigamePhase === "countdown" && !!seat.countdown;
   const showPodium = !isFinished && seat.minigamePhase === "results" && !!seat.lastResult;
+  // Between minigames we stay on the board and gate the next game behind a
+  // ready vote (host can force-start), rather than dropping back to the lobby.
+  const inIntermission =
+    !isFinished && (seat.minigamePhase === "results" || seat.minigamePhase === "intermission");
+  const showReady = inIntermission && !spinning && !assigning && !countingDown;
 
   return (
     <div className="game-wrap board-stage">
@@ -118,6 +124,8 @@ export function GameScreen({ seat }: { seat: SeatState }) {
       )}
 
       {showPodium && seat.lastResult && <Podium result={seat.lastResult} />}
+
+      {showReady && <ReadyPanel seat={seat} withPodium={showPodium} />}
     </div>
   );
 }

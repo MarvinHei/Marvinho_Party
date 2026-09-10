@@ -13,6 +13,10 @@ import { LobbyManager } from "./lobbyManager.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3001);
 const IS_PROD = process.env.NODE_ENV === "production";
+// Debug mode (standalone minigame practice via lobby:debugStart) is a developer
+// tool gated behind a feature flag: on outside production, and in production
+// only when ENABLE_DEBUG=true. Keeps the sandbox path unreachable in prod.
+const DEBUG_ENABLED = !IS_PROD || process.env.ENABLE_DEBUG === "true";
 
 const app = express();
 const httpServer = createServer(app);
@@ -272,6 +276,7 @@ io.on("connection", (socket) => {
 
   socket.on("lobby:debugStart", ({ game }, ack) => {
     try {
+      if (!DEBUG_ENABLED) throw new Error("Debug mode is disabled.");
       if (!session) throw new Error("Not in a lobby.");
       const lobby = manager.getLobby(session.lobbyId);
       if (!lobby) throw new Error("Lobby not found.");

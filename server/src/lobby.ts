@@ -1137,15 +1137,17 @@ export class Lobby {
       return;
     }
 
-    // Show the results podium briefly, then return everyone to the lobby so the
-    // host can start the next game. The board race (positions) carries over.
+    // Show the results podium briefly, then keep everyone on the board in an
+    // intermission (the board race carries over) and open the ready vote for
+    // the next game. We deliberately do NOT return to the lobby screen
+    // mid-match — the host only picks difficulty / roster at the very start.
     this.phase = "intermission";
     this.resetReady();
     this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
     this.schedule(() => {
-      this.phase = "lobby";
-      this.resetReady();
-      this.broadcastLobby();
+      // Guard: a new round may already have been started from the ready vote.
+      if (this.phase !== "intermission") return;
+      this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
     }, RESULTS_MS);
   }
 

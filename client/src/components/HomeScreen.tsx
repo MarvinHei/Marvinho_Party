@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
 import { store, REQUIRED_PLAYERS } from "../state/store.js";
 import { useStore } from "../state/useStore.js";
+import { DEBUG_FEATURE_ENABLED } from "../features.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
 
@@ -110,7 +111,7 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
         </div>
       </div>
 
-      {snap.debugEnabled && (
+      {DEBUG_FEATURE_ENABLED && snap.debugEnabled && (
         <div className="panel practice-panel" style={{ width: 420, maxWidth: "100%" }}>
           <h3 className="pixel" style={{ fontSize: 12, margin: "0 0 4px", color: "var(--warn)" }}>
             🐛 Practice a minigame

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "./state/useStore.js";
 import { store } from "./state/store.js";
+import { DEBUG_FEATURE_ENABLED } from "./features.js";
 import { DebugBar } from "./components/DebugBar.js";
 import { HomeScreen } from "./components/HomeScreen.js";
 import { LobbyScreen } from "./components/LobbyScreen.js";
@@ -18,7 +19,7 @@ export function App() {
 
   return (
     <div className="app">
-      <DebugBar />
+      {DEBUG_FEATURE_ENABLED && <DebugBar />}
       {!active ? (
         <div className="center-stage">
           <div className="panel">
