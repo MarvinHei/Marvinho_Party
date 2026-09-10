@@ -65,13 +65,14 @@ export class TetrisMatch {
   }
 
   /**
-   * Route a line clear from `sender` to their chosen (or a random alive) target.
+   * Route a line clear from `sender` to their target. Every cleared line sends
+   * one garbage row (1→1, 2→2, 3→3, 4→4) so clears reliably reach an opponent,
+   * rather than the old table that dropped single/double clears entirely.
    * Returns the recipient and the garbage to add, or null if nobody to hit.
    */
   routeLines(sender: string, lines: number): { recipientId: string; rows: number; hole: number } | null {
     if (!this.alive.has(sender)) return null;
-    const clamped = Math.max(0, Math.min(lines, TETRIS_CONFIG.garbageForLines.length - 1));
-    const rows = TETRIS_CONFIG.garbageForLines[clamped];
+    const rows = Math.max(0, Math.min(Math.floor(lines), TETRIS_CONFIG.rows - 1));
     if (rows <= 0) return null;
 
     const recipient = this.resolveTarget(sender);
@@ -80,12 +81,22 @@ export class TetrisMatch {
     return { recipientId: recipient, rows, hole };
   }
 
+  /**
+   * Pick who receives `sender`'s garbage. If they've explicitly chosen a valid,
+   * still-alive target, honor it. Otherwise ("Auto") deterministically gang up
+   * on the current leader — the alive opponent with the most cleared lines
+   * (stable tie-break by join order) — so attacks feel purposeful, not random.
+   */
   private resolveTarget(sender: string): string | null {
     const others = this.aliveIds().filter((id) => id !== sender);
     if (others.length === 0) return null;
     const chosen = this.targets.get(sender);
     if (chosen && chosen !== "random" && others.includes(chosen)) return chosen;
-    return others[Math.floor(Math.random() * others.length)];
+    return others.reduce((best, id) => {
+      const bestLines = this.boards.get(best)?.lines ?? 0;
+      const idLines = this.boards.get(id)?.lines ?? 0;
+      return idLines > bestLines ? id : best;
+    }, others[0]);
   }
 
   /** Mark a player as topped out. Returns true if the roster changed. */

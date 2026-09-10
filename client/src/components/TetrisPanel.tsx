@@ -90,7 +90,8 @@ interface Active {
 }
 
 class Engine {
-  grid: string[][] = Array.from({ length: ROWS }, () => Array<string>(COLS).fill("."));
+  readonly rows: number;
+  grid: string[][];
   active: Active | null = null;
   hold: Piece | null = null;
   canHold = true;
@@ -102,7 +103,9 @@ class Engine {
   /** Lines cleared this lock, to report to the server. */
   lastSent = 0;
 
-  constructor(seed: number) {
+  constructor(seed: number, rows: number = ROWS) {
+    this.rows = rows;
+    this.grid = Array.from({ length: rows }, () => Array<string>(COLS).fill("."));
     this.rng = mulberry32(seed);
   }
 
@@ -126,7 +129,7 @@ class Engine {
 
   collides(a: Active): boolean {
     for (const [gx, gy] of this.cells(a)) {
-      if (gx < 0 || gx >= COLS || gy >= ROWS) return true;
+      if (gx < 0 || gx >= COLS || gy >= this.rows) return true;
       if (gy >= 0 && this.grid[gy][gx] !== ".") return true;
     }
     return false;
@@ -200,7 +203,7 @@ class Engine {
 
     // Clear full rows.
     let cleared = 0;
-    for (let y = ROWS - 1; y >= 0; y--) {
+    for (let y = this.rows - 1; y >= 0; y--) {
       if (this.grid[y].every((c) => c !== ".")) {
         this.grid.splice(y, 1);
         this.grid.unshift(Array<string>(COLS).fill("."));
@@ -243,16 +246,22 @@ class Engine {
     const flat = this.grid.map((r) => [...r]);
     if (this.active) {
       for (const [gx, gy] of this.cells(this.active)) {
-        if (gy >= 0 && gy < ROWS && gx >= 0 && gx < COLS) flat[gy][gx] = this.active.type;
+        if (gy >= 0 && gy < this.rows && gx >= 0 && gx < COLS) flat[gy][gx] = this.active.type;
       }
     }
     return flat.map((r) => r.join("")).join("");
   }
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, cells: string, cell: number, ghost?: [number, number][]) {
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  cells: string,
+  cell: number,
+  rows: number,
+  ghost?: [number, number][],
+) {
   const w = COLS * cell;
-  const h = ROWS * cell;
+  const h = rows * cell;
   ctx.fillStyle = "#0b0a1e";
   ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -262,7 +271,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, cells: string, cell: number, gh
     ctx.lineTo(x * cell, h);
     ctx.stroke();
   }
-  for (let y = 0; y <= ROWS; y++) {
+  for (let y = 0; y <= rows; y++) {
     ctx.beginPath();
     ctx.moveTo(0, y * cell);
     ctx.lineTo(w, y * cell);
@@ -315,7 +324,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
   // --- engine lifecycle ---------------------------------------------------
   useEffect(() => {
     if (!init) return;
-    const eng = new Engine(init.seed);
+    const eng = new Engine(init.seed, init.rows);
     engRef.current = eng;
     eng.spawn();
 
@@ -350,7 +359,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
             ([cx, cy]) => [eng.active!.x + cx, eng.ghostY() + cy] as [number, number],
           )
         : undefined;
-      drawGrid(ctx, eng.serialize(), CELL, ghost);
+      drawGrid(ctx, eng.serialize(), CELL, eng.rows, ghost);
     };
 
     const startsIn = () => init.startsAt - Date.now();
@@ -514,7 +523,12 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           {pending > 0 && <div className="tetris-danger pixel">⚠ +{pending} incoming</div>}
         </div>
         <div className="tetris-board-frame">
-          <canvas ref={canvasRef} width={COLS * CELL} height={ROWS * CELL} className="tetris-canvas" />
+          <canvas
+            ref={canvasRef}
+            width={COLS * CELL}
+            height={(init?.rows ?? ROWS) * CELL}
+            className="tetris-canvas"
+          />
           {dead && (
             <div className="tetris-ko">
               <span className="pixel">KO'd</span>
@@ -569,8 +583,9 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           <button
             className={`tetris-target${target === "random" ? " on" : ""}`}
             onClick={() => chooseTarget("random")}
+            title="Automatically attack whoever's in the lead"
           >
-            🎲 Random
+            🎯 Auto (leader)
           </button>
           {opponents.map((op) => {
             const alive = seat.tetrisAlive.includes(op.id);
@@ -612,11 +627,13 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
 function MiniBoard({ cells }: { cells: string }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const mini = 8;
+  // Rows are derived from the snapshot so it matches the configured board height.
+  const rows = cells.length ? Math.round(cells.length / COLS) : ROWS;
   useEffect(() => {
     const ctx = ref.current?.getContext("2d");
     if (!ctx) return;
     ctx.fillStyle = "#0b0a1e";
-    ctx.fillRect(0, 0, COLS * mini, ROWS * mini);
+    ctx.fillRect(0, 0, COLS * mini, rows * mini);
     for (let i = 0; i < cells.length; i++) {
       const ch = cells[i];
       if (ch === ".") continue;
@@ -625,6 +642,6 @@ function MiniBoard({ cells }: { cells: string }) {
       ctx.fillStyle = COLORS[ch] ?? "#888";
       ctx.fillRect(x * mini, y * mini, mini - 1, mini - 1);
     }
-  }, [cells]);
-  return <canvas ref={ref} width={COLS * mini} height={ROWS * mini} className="tetris-mini" />;
+  }, [cells, rows]);
+  return <canvas ref={ref} width={COLS * mini} height={rows * mini} className="tetris-mini" />;
 }

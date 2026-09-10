@@ -22,6 +22,8 @@ interface Token {
   badge: Phaser.GameObjects.Container;
   size: number;
   lastPosition: number;
+  bob: Phaser.Tweens.Tween; // idle bob, paused while hopping
+  hopping: boolean;
 }
 
 // --- small color helpers ----------------------------------------------------
@@ -34,6 +36,12 @@ function shade(hex: string, amount: number): number {
   else c.darken(-amount * 100);
   return c.color;
 }
+
+// Remembers each player's last rendered board tile ACROSS board remounts (the
+// board is torn down during each minigame). This lets the forward-hop animation
+// play when the board reappears after a game, instead of tokens snapping into
+// place. Module-level so it survives the React unmount/remount of PhaserBoard.
+const REMEMBERED_POSITIONS = new Map<string, number>();
 
 /**
  * Renders the board and animates player characters. Static art (tiles, path,
@@ -362,7 +370,7 @@ export class BoardScene extends Phaser.Scene {
 
     // Idle: bob + breathing, desynced per token.
     const phase = Math.random() * 1000;
-    this.tweens.add({
+    const bob = this.tweens.add({
       targets: avatar,
       y: -size * 0.14,
       duration: 950,
@@ -395,7 +403,7 @@ export class BoardScene extends Phaser.Scene {
       });
     }
 
-    return { root, avatar, eyes: [eyeL, eyeR], crown, badge, size, lastPosition: player.position };
+    return { root, avatar, eyes: [eyeL, eyeR], crown, badge, size, lastPosition: player.position, bob, hopping: false };
   }
 
   private updateTokens(state: BoardState) {
@@ -421,30 +429,29 @@ export class BoardScene extends Phaser.Scene {
       let token = this.tokens.get(player.id);
       if (!token) {
         token = this.createToken(player, player.id === state.meId);
-        token.root.setPosition(tx, ty);
         this.tokens.set(player.id, token);
+        // The board unmounts during each minigame; if this player advanced while
+        // it was hidden, start them on their old tile and hop forward so the
+        // "moving up the board" animation still plays after the game.
+        const prev = REMEMBERED_POSITIONS.get(player.id);
+        if (prev !== undefined && prev !== player.position) {
+          const prevIdx = Math.min(prev, this.tilePoints.length - 1);
+          const pp = this.tilePoints[prevIdx];
+          token.root.setPosition(pp.x, pp.y);
+          token.lastPosition = prev;
+          this.hopForward(token, prev, player.position, tx, ty, toNum(player.color));
+        } else {
+          token.root.setPosition(tx, ty);
+        }
       } else if (player.position !== token.lastPosition) {
-        // Smooth glide to the new tile with a little hop.
-        this.tweens.add({
-          targets: token.root,
-          x: tx,
-          y: ty,
-          duration: 700,
-          ease: "Cubic.easeInOut",
-        });
-        this.tweens.add({
-          targets: token.avatar,
-          y: -token.size * 0.6,
-          duration: 350,
-          yoyo: true,
-          ease: "Quad.easeOut",
-          onComplete: () => this.burst(tx, ty, toNum(player.color)),
-        });
+        // Springy tile-by-tile hop toward the new position (board-game style).
+        this.hopForward(token, token.lastPosition, player.position, tx, ty, toNum(player.color));
       } else {
         // Same tile, maybe a re-fan after grouping changed.
         this.tweens.add({ targets: token.root, x: tx, y: ty, duration: 220, ease: "Sine.easeInOut" });
       }
       token.lastPosition = player.position;
+      REMEMBERED_POSITIONS.set(player.id, player.position);
 
       const isLeader = player.position > 0 && player.position === maxPos;
       token.crown.setVisible(isLeader);
@@ -458,6 +465,84 @@ export class BoardScene extends Phaser.Scene {
         this.tokens.delete(id);
       }
     }
+  }
+
+  /**
+   * Hop a token forward one tile at a time with a springy jump on each step,
+   * landing with a squash-and-stretch. Used after every minigame as characters
+   * advance across the board.
+   */
+  private hopForward(
+    token: Token,
+    from: number,
+    to: number,
+    finalX: number,
+    finalY: number,
+    color: number,
+  ) {
+    // Build the list of tiles to land on (each hop = one tile).
+    const steps: { x: number; y: number }[] = [];
+    if (to > from) {
+      for (let pos = from + 1; pos <= to; pos++) {
+        const idx = Math.min(pos, this.tilePoints.length - 1);
+        const p = this.tilePoints[idx];
+        steps.push(pos === to ? { x: finalX, y: finalY } : { x: p.x, y: p.y });
+      }
+    } else {
+      steps.push({ x: finalX, y: finalY }); // moved back (rare) — one settle
+    }
+
+    const n = steps.length;
+    // Keep the whole advance snappy regardless of distance.
+    const per = Math.max(150, Math.min(300, Math.round(1500 / n)));
+    const hop = token.size * 0.7;
+
+    // Pause the idle bob so it doesn't fight the jump on avatar.y.
+    if (!token.hopping) {
+      token.hopping = true;
+      token.bob.pause();
+    }
+
+    const chain = steps.map((s, i) => ({
+      targets: token.root,
+      x: s.x,
+      y: s.y,
+      duration: per,
+      ease: "Sine.easeInOut",
+      onStart: () => {
+        // Jump arc (up then down) synced to this hop.
+        this.tweens.add({
+          targets: token.avatar,
+          y: -hop,
+          duration: per / 2,
+          yoyo: true,
+          ease: "Quad.easeOut",
+        });
+      },
+      onComplete: () => {
+        // Spring squash on landing.
+        token.avatar.setScale(1.18, 0.82);
+        this.tweens.add({
+          targets: token.avatar,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 220,
+          ease: "Back.easeOut",
+        });
+        if (i === n - 1) this.burst(s.x, s.y, color);
+      },
+    }));
+
+    this.tweens.chain({
+      tweens: chain,
+      onComplete: () => {
+        // Settle the avatar and resume the idle bob.
+        token.avatar.y = 0;
+        token.avatar.setScale(1, 1);
+        token.hopping = false;
+        token.bob.restart();
+      },
+    });
   }
 
   private burst(x: number, y: number, color: number) {

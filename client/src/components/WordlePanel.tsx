@@ -100,13 +100,14 @@ export function WordlePanel({ seat }: { seat: SeatState }) {
     }
   }
 
+  const timed = seat.lobby?.settings.games.wordle?.timerEnabled ?? true;
   const secondsLeft = Math.max(0, Math.ceil((w.endsAt - Date.now()) / 1000));
-  const lowTime = secondsLeft <= 10 && secondsLeft > 0 && !w.finished;
+  const lowTime = timed && secondsLeft <= 10 && secondsLeft > 0 && !w.finished;
 
   return (
     <div className="wordle">
-      <TimerTick seconds={secondsLeft} active={lowTime} />
-      <div className={`timer${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>
+      {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
+      {timed && <div className={`timer${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>}
       <h2 className="pixel" style={{ fontSize: 16, margin: 0 }}>
         WORDLE RACE
       </h2>

@@ -75,7 +75,10 @@ export class SkribblGame {
   private correct = new Map<string, { timeMs: number; points: number }>();
   private revealedLetters = new Set<number>();
 
-  constructor(players: PlayerInfo[]) {
+  private readonly roundSeconds: number;
+
+  constructor(players: PlayerInfo[], roundSeconds: number = SKRIBBL_CONFIG.roundSeconds) {
+    this.roundSeconds = roundSeconds;
     this.order = shuffle(players.map((p) => p.id));
     for (const p of players) {
       this.info.set(p.id, p);
@@ -115,7 +118,7 @@ export class SkribblGame {
     this.drawerId = this.order[this.turnIndex];
     this.word = pickWord();
     this.wordStart = Date.now();
-    this.endsAt = this.wordStart + SKRIBBL_CONFIG.roundSeconds * 1000;
+    this.endsAt = this.wordStart + this.roundSeconds * 1000;
     this.phase = "drawing";
     this.reveal = null;
     this.correct.clear();
@@ -166,7 +169,7 @@ export class SkribblGame {
 
     if (normalize(text) === normalize(this.word)) {
       const now = Date.now();
-      const total = SKRIBBL_CONFIG.roundSeconds * 1000;
+      const total = this.roundSeconds * 1000;
       const frac = Math.max(0, Math.min(1, (this.endsAt - now) / total));
       const points = Math.max(
         SKRIBBL_CONFIG.guessMinPoints,

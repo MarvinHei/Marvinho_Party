@@ -88,8 +88,11 @@ export function CodenamesPanel({ seat }: { seat: SeatState }) {
         <TeamBadge team="b" cv={cv} nameOf={nameOf} />
       </div>
 
-      {/* Grid */}
-      <div className="cn-grid">
+      {/* Grid (size adapts to the card count: 3×3, 4×4 or 5×5) */}
+      <div
+        className="cn-grid"
+        style={{ gridTemplateColumns: `repeat(${Math.round(Math.sqrt(cv.words.length))}, 1fr)` }}
+      >
         {cv.words.map((word, i) => {
           const revealed = cv.revealed[i];
           const keyColor = cv.key ? cv.key[i] : null; // spymaster only

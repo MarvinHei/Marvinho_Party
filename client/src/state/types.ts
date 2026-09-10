@@ -37,6 +37,7 @@ export type MinigamePhase =
   | "intermission"
   | "spinning"
   | "assigning"
+  | "explaining"
   | "countdown"
   | "playing"
   | "results";
@@ -72,6 +73,8 @@ export interface SeatState {
 
   minigame: MinigameType | null;
   minigamePhase: MinigamePhase | null;
+  /** The game whose explanation screen is showing (phase "explaining"). */
+  explainGame: MinigameType | null;
   standings: WordleStanding[];
   lastResult: MinigameResult | null;
   wordle: WordleClientState | null;
@@ -112,6 +115,7 @@ export function initialSeat(id: string, label: string): SeatState {
     error: null,
     minigame: null,
     minigamePhase: null,
+    explainGame: null,
     standings: [],
     lastResult: null,
     wordle: null,

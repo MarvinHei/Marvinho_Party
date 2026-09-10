@@ -1,27 +1,26 @@
 import type { Server } from "socket.io";
 import {
-  CODENAMES_CONFIG,
   GAME_CONFIG,
+  NO_TIMER_SECONDS,
   PLAYER_COLORS,
-  PUZZLE_ROUND_SECONDS,
-  SKRIBBL_CONFIG,
   SKRIBBL_TEAMS_CONFIG,
   TEAM_STYLES,
   TETRIS_CONFIG,
   WHEEL_SPIN_MS,
   WORDLE_CONFIG,
   canFormTeams,
+  defaultLobbySettings,
   possibleTeamCounts,
   rewardForRank,
   type ClientToServerEvents,
   type CodenamesAssignment,
   type CodenamesTeam,
   type LobbyPhase,
+  type LobbySettings,
   type LobbyView,
   type MinigameResult,
   type MinigameType,
   type PlayerView,
-  type PuzzleDifficulty,
   type PuzzleGame,
   type PuzzleStanding,
   type ScoreRow,
@@ -94,7 +93,9 @@ export class Lobby {
   private tetris: TetrisMatch | null = null;
   private puzzle: PuzzleRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
-  private puzzleDifficulty: PuzzleDifficulty = "medium";
+  private settings: LobbySettings = defaultLobbySettings();
+  /** The game awaiting its explanation-screen ready-gate, if any. */
+  private explainGame: MinigameType | null = null;
   private sandbox = false;
   private timers: NodeJS.Timeout[] = [];
   private interval: NodeJS.Timeout | null = null;
@@ -251,7 +252,9 @@ export class Lobby {
   }
 
   setReady(playerId: string, ready: boolean): void {
-    if (this.phase !== "intermission") throw new Error("Not in an intermission.");
+    if (this.phase !== "intermission" && this.phase !== "explaining") {
+      throw new Error("Not ready-gating right now.");
+    }
     const player = this.players.get(playerId);
     if (!player) throw new Error("Not in this lobby.");
     player.ready = ready;
@@ -261,16 +264,27 @@ export class Lobby {
 
   forceStart(playerId: string): void {
     if (!this.isHost(playerId)) throw new Error("Only the host can start.");
-    if (this.phase !== "intermission") throw new Error("Nothing to start.");
-    this.spinWheel();
+    if (this.phase === "explaining" && this.explainGame) {
+      this.beginCountdown(this.explainGame);
+    } else if (this.phase === "intermission") {
+      this.spinWheel();
+    } else {
+      throw new Error("Nothing to start.");
+    }
   }
 
-  /** Host-only: choose the puzzle difficulty (only while in the lobby). */
-  setDifficulty(hostId: string, difficulty: PuzzleDifficulty): void {
-    if (!this.isHost(hostId)) throw new Error("Only the host can change difficulty.");
-    if (this.phase !== "lobby") throw new Error("Difficulty can only change in the lobby.");
-    this.puzzleDifficulty = difficulty;
+  /** Host-only: replace the lobby settings (only while in the lobby). */
+  updateSettings(hostId: string, settings: LobbySettings): void {
+    if (!this.isHost(hostId)) throw new Error("Only the host can change settings.");
+    if (this.phase !== "lobby") throw new Error("Settings can only change in the lobby.");
+    this.settings = settings;
     this.broadcastLobby();
+  }
+
+  /** Effective round length for a game, honoring the timer on/off toggle. */
+  private roundSecondsFor(game: MinigameType): number {
+    const s = this.settings.games[game];
+    return s.timerEnabled ? s.timerSeconds : NO_TIMER_SECONDS;
   }
 
   /** Host-only: remove another player while still in the lobby. */
@@ -309,9 +323,13 @@ export class Lobby {
   private maybeStartFromReady(): void {
     if (this.sandbox) return; // sandbox rounds are launched explicitly
 
-    if (this.phase !== "intermission") return;
     const connected = this.connectedPlayers();
-    if (connected.length >= 1 && connected.every((p) => p.ready)) {
+    const allReady = connected.length >= 1 && connected.every((p) => p.ready);
+    if (!allReady) return;
+
+    if (this.phase === "explaining" && this.explainGame) {
+      this.beginCountdown(this.explainGame);
+    } else if (this.phase === "intermission") {
       this.spinWheel();
     }
   }
@@ -334,11 +352,23 @@ export class Lobby {
     }
     // Codenames needs two real teams — even count, at least 4 players.
     if (n >= 4 && n % 2 === 0) games.push("codenames");
-    return games;
+    // Drop any the host has blacklisted for this lobby.
+    return games.filter((g) => this.settings.games[g].enabled);
   }
 
   private spinWheel(): void {
     const all = this.availableGames();
+    if (all.length === 0) {
+      // Everything is blacklisted (or nobody can play any enabled game): return
+      // to the lobby so the host can re-enable something.
+      this.phase = "lobby";
+      this.resetReady();
+      this.io.to(this.id).emit("server:error", {
+        message: "No minigames are enabled — turn some on in settings.",
+      });
+      this.broadcastLobby();
+      return;
+    }
     // Never offer the game that was just played (unless it's the only option).
     const prev = this.currentMinigame;
     let options = all;
@@ -355,7 +385,25 @@ export class Lobby {
 
   private afterSpin(game: MinigameType): void {
     if (game === "codenames") this.beginAssignment();
+    else this.proceed(game);
+  }
+
+  /**
+   * After a game has been chosen (and any assignment shown), either gate on an
+   * explanation screen (host-enabled) or roll straight into the countdown.
+   */
+  private proceed(game: MinigameType): void {
+    // Sandbox/practice skips the explanation gate (it has its own menu flow).
+    if (this.settings.explanations && !this.sandbox) this.beginExplanation(game);
     else this.beginCountdown(game);
+  }
+
+  private beginExplanation(game: MinigameType): void {
+    this.phase = "explaining";
+    this.explainGame = game;
+    this.resetReady();
+    this.io.to(this.id).emit("minigame:explain", { game });
+    this.broadcastLobby();
   }
 
   private buildAssignment(): CodenamesAssignment {
@@ -376,10 +424,11 @@ export class Lobby {
       teams: this.pendingAssign,
       animMs: ASSIGN_MS,
     });
-    this.schedule(() => this.beginCountdown("codenames"), ASSIGN_MS + 200);
+    this.schedule(() => this.proceed("codenames"), ASSIGN_MS + 200);
   }
 
   private beginCountdown(game: MinigameType): void {
+    this.explainGame = null;
     this.phase = "countdown";
     const endsAt = Date.now() + COUNTDOWN_MS;
     this.io.to(this.id).emit("minigame:countdown", { game, endsAt });
@@ -474,14 +523,15 @@ export class Lobby {
       participants.map((p) => p.id),
       WORDLE_CONFIG.maxGuesses,
     );
-    const endsAt = Date.now() + WORDLE_CONFIG.roundSeconds * 1000;
+    const seconds = this.roundSecondsFor("wordle");
+    const endsAt = Date.now() + seconds * 1000;
 
     this.io.to(this.id).emit("minigame:start", {
       type: "wordle",
       wordle: {
         wordLength: WORDLE_CONFIG.wordLength,
         maxGuesses: WORDLE_CONFIG.maxGuesses,
-        roundSeconds: WORDLE_CONFIG.roundSeconds,
+        roundSeconds: seconds,
         endsAt,
       },
     });
@@ -492,7 +542,7 @@ export class Lobby {
         this.wordle.finishAll();
         this.endWordle();
       }
-    }, WORDLE_CONFIG.roundSeconds * 1000);
+    }, seconds * 1000);
   }
 
   handleWordleGuess(playerId: string, guess: string) {
@@ -566,7 +616,7 @@ export class Lobby {
 
     this.phase = "minigame";
     this.currentMinigame = "codenames";
-    this.codenames = new CodenamesRound(assignment);
+    this.codenames = new CodenamesRound(assignment, this.settings.codenamesSize);
 
     this.io.to(this.id).emit("minigame:start", { type: "codenames" });
     this.broadcastCodenames();
@@ -577,7 +627,7 @@ export class Lobby {
         this.broadcastCodenames();
         this.endCodenames();
       }
-    }, CODENAMES_CONFIG.roundSeconds * 1000);
+    }, this.roundSecondsFor("codenames") * 1000);
   }
 
   private broadcastCodenames(): void {
@@ -673,7 +723,7 @@ export class Lobby {
     }));
     this.phase = "minigame";
     this.currentMinigame = "skribbl";
-    this.skribbl = new SkribblGame(players);
+    this.skribbl = new SkribblGame(players, this.roundSecondsFor("skribbl"));
     this.io.to(this.id).emit("minigame:start", { type: "skribbl" });
     this.nextSkribblTurn();
   }
@@ -683,7 +733,7 @@ export class Lobby {
     this.skribbl.beginTurn();
     this.io.to(this.id).emit("skribbl:clear");
     this.broadcastSkribbl();
-    const total = SKRIBBL_CONFIG.roundSeconds * 1000;
+    const total = this.roundSecondsFor("skribbl") * 1000;
     // Reveal up to two hint letters across the turn (at ~1/3 and ~2/3).
     this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.34));
     this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.67));
@@ -775,7 +825,7 @@ export class Lobby {
     const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
     this.phase = "minigame";
     this.currentMinigame = "skribblteams";
-    this.skribblTeams = new SkribblTeamsGame(teams, players);
+    this.skribblTeams = new SkribblTeamsGame(teams, players, this.roundSecondsFor("skribblteams"));
     this.io.to(this.id).emit("minigame:start", { type: "skribblteams" });
     this.nextSkribblTeamsRound();
   }
@@ -785,7 +835,7 @@ export class Lobby {
     this.skribblTeams.beginRound();
     this.io.to(this.id).emit("skribblteams:clear");
     this.broadcastSkribblTeams();
-    const total = SKRIBBL_TEAMS_CONFIG.roundSeconds * 1000;
+    const total = this.roundSecondsFor("skribblteams") * 1000;
     this.schedule(() => this.revealSkribblTeamsHint(), Math.round(total * 0.34));
     this.schedule(() => this.revealSkribblTeamsHint(), Math.round(total * 0.67));
     this.schedule(() => this.finishSkribblTeamsRound(), total);
@@ -880,7 +930,7 @@ export class Lobby {
     const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
     this.phase = "minigame";
     this.currentMinigame = "findword";
-    this.findword = new FindWordGame(teams, players);
+    this.findword = new FindWordGame(teams, players, this.roundSecondsFor("findword"));
     this.io.to(this.id).emit("minigame:start", { type: "findword" });
     this.broadcastFindword();
     // Poll for per-team attempt deadlines.
@@ -945,12 +995,14 @@ export class Lobby {
       players: this.tetris.players(),
       seed: this.tetris.seed,
       startsAt,
+      rows: this.settings.tetrisRows,
+      cols: TETRIS_CONFIG.cols,
     });
     this.broadcastTetrisPlayers();
     // Hard time cap.
     this.schedule(() => {
       if (this.tetris) this.endTetris();
-    }, TETRIS_CONFIG.roundSeconds * 1000);
+    }, this.roundSecondsFor("tetris") * 1000);
   }
 
   private broadcastTetrisPlayers(): void {
@@ -1026,11 +1078,11 @@ export class Lobby {
 
   private startPuzzle(game: PuzzleGame): void {
     const participants = this.connectedPlayers();
-    const { spec } = generatePuzzle(game, this.puzzleDifficulty);
+    const { spec } = generatePuzzle(game, this.settings.puzzleDifficulty[game]);
     this.phase = "minigame";
     this.currentMinigame = game;
     this.puzzle = new PuzzleRound(participants.map((p) => p.id), spec);
-    const seconds = PUZZLE_ROUND_SECONDS[game];
+    const seconds = this.roundSecondsFor(game);
     const endsAt = Date.now() + seconds * 1000;
 
     this.io.to(this.id).emit("minigame:start", { type: game });
@@ -1138,16 +1190,22 @@ export class Lobby {
     }
 
     // Show the results podium briefly, then keep everyone on the board in an
-    // intermission (the board race carries over) and open the ready vote for
-    // the next game. We deliberately do NOT return to the lobby screen
-    // mid-match — the host only picks difficulty / roster at the very start.
+    // intermission (the board race carries over). We deliberately do NOT return
+    // to the lobby screen mid-match — the host only configures at the very start.
     this.phase = "intermission";
     this.resetReady();
     this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
     this.schedule(() => {
       // Guard: a new round may already have been started from the ready vote.
       if (this.phase !== "intermission") return;
-      this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
+      if (this.settings.explanations) {
+        // The explanation screen provides the ready-gate; roll straight into the
+        // wheel so there aren't two consecutive ready votes.
+        this.spinWheel();
+      } else {
+        // No explanation screen: the board's ready vote paces the next round.
+        this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
+      }
     }, RESULTS_MS);
   }
 
@@ -1175,7 +1233,7 @@ export class Lobby {
       minPlayers: GAME_CONFIG.minPlayers,
       winnerId: this.winnerId,
       currentMinigame: this.currentMinigame,
-      puzzleDifficulty: this.puzzleDifficulty,
+      settings: this.settings,
       sandbox: this.sandbox,
     };
   }

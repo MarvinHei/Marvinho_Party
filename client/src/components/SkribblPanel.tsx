@@ -90,7 +90,9 @@ export function SkribblPanel({ seat }: { seat: SeatState }) {
             </span>
           )}
         </div>
-        <div className="skribbl-timer pixel">⏱ {secondsLeft}s</div>
+        {(seat.lobby?.settings.games.skribbl?.timerEnabled ?? true) && (
+          <div className="skribbl-timer pixel">⏱ {secondsLeft}s</div>
+        )}
       </div>
 
       <div className="skribbl-role hint">

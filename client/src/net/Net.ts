@@ -89,6 +89,16 @@ export class Net {
       this.patch({ screen: "game", minigamePhase: "assigning", assign: teams });
     });
 
+    this.socket.on("minigame:explain", ({ game }) => {
+      this.patch({
+        screen: "game",
+        minigamePhase: "explaining",
+        explainGame: game,
+        wheel: null,
+        countdown: null,
+      });
+    });
+
     this.socket.on("minigame:countdown", ({ game, endsAt }) => {
       this.patch({ screen: "game", minigamePhase: "countdown", countdown: { game, endsAt } });
     });
@@ -294,9 +304,9 @@ export class Net {
     });
   }
 
-  setDifficulty(difficulty: import("@marvinho/shared").PuzzleDifficulty): Promise<null> {
+  updateSettings(settings: import("@marvinho/shared").LobbySettings): Promise<null> {
     return new Promise((resolve, reject) => {
-      this.socket.emit("lobby:setDifficulty", { difficulty }, (res) => this.ack(res, resolve, reject));
+      this.socket.emit("lobby:updateSettings", { settings }, (res) => this.ack(res, resolve, reject));
     });
   }
 

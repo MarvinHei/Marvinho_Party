@@ -54,7 +54,9 @@ export function FindWordPanel({ seat }: { seat: SeatState }) {
         <div className="fw-goal">
           Attempt {cv.round} — everyone type the <b>same</b> word (≥ {cv.minWordLength} letters)
         </div>
-        {!cv.finished && <div className="skribbl-timer pixel">⏱ {secondsLeft}s</div>}
+        {!cv.finished && (seat.lobby?.settings.games.findword?.timerEnabled ?? true) && (
+          <div className="skribbl-timer pixel">⏱ {secondsLeft}s</div>
+        )}
       </div>
 
       <div className="findword-body">

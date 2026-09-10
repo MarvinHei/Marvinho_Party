@@ -1,6 +1,7 @@
 import {
-  CODENAMES_CONFIG,
+  codenamesDistribution,
   type CardColor,
+  type CodenamesSize,
   type CodenamesTeam,
   type CodenamesTurnPhase,
   type CodenamesView,
@@ -41,19 +42,23 @@ export class CodenamesRound {
   private log: string[] = [];
   private winnerTeam: CodenamesTeam | null = null;
 
-  constructor(teams: Record<CodenamesTeam, { spymasterId: string; memberIds: string[] }>) {
-    const size = CODENAMES_CONFIG.gridSize;
-    this.words = pickWords(size);
+  constructor(
+    teams: Record<CodenamesTeam, { spymasterId: string; memberIds: string[] }>,
+    boardSize: CodenamesSize = 5,
+  ) {
+    const dist = codenamesDistribution(boardSize);
+    const grid = dist.grid;
+    this.words = pickWords(grid);
     this.startingTeam = Math.random() < 0.5 ? "a" : "b";
     const secondTeam = other(this.startingTeam);
 
     const colors: CardColor[] = [];
-    for (let i = 0; i < CODENAMES_CONFIG.startingTeamCards; i++) colors.push(this.startingTeam);
-    for (let i = 0; i < CODENAMES_CONFIG.otherTeamCards; i++) colors.push(secondTeam);
-    for (let i = 0; i < CODENAMES_CONFIG.neutralCards; i++) colors.push("neutral");
-    for (let i = 0; i < CODENAMES_CONFIG.assassinCards; i++) colors.push("assassin");
+    for (let i = 0; i < dist.startingTeamCards; i++) colors.push(this.startingTeam);
+    for (let i = 0; i < dist.otherTeamCards; i++) colors.push(secondTeam);
+    for (let i = 0; i < dist.neutralCards; i++) colors.push("neutral");
+    for (let i = 0; i < dist.assassinCards; i++) colors.push("assassin");
     this.key = shuffle(colors);
-    this.revealed = new Array(size).fill(null);
+    this.revealed = new Array(grid).fill(null);
 
     this.teams = {
       a: { ...teams.a, remaining: this.countColor("a") },

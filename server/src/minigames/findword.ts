@@ -54,13 +54,20 @@ export class FindWordGame {
   private teamOfPlayer = new Map<string, TeamState>();
   private gameStart = Date.now();
 
-  constructor(teams: TeamSpec[], players: PlayerInfo[]) {
+  private readonly roundSeconds: number;
+
+  constructor(
+    teams: TeamSpec[],
+    players: PlayerInfo[],
+    roundSeconds: number = FINDWORD_CONFIG.roundSeconds,
+  ) {
+    this.roundSeconds = roundSeconds;
     const now = Date.now();
     this.teams = teams.map((t) => ({
       ...t,
       roundIndex: 0,
       roundStart: now,
-      endsAt: now + FINDWORD_CONFIG.roundSeconds * 1000,
+      endsAt: now + roundSeconds * 1000,
       current: new Map<string, string>(),
       history: [],
       done: false,
@@ -143,7 +150,7 @@ export class FindWordGame {
       return;
     }
     team.roundStart = Date.now();
-    team.endsAt = team.roundStart + FINDWORD_CONFIG.roundSeconds * 1000;
+    team.endsAt = team.roundStart + this.roundSeconds * 1000;
   }
 
   // --- views / results ----------------------------------------------------

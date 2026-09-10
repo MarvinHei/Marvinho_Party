@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
@@ -13,12 +13,26 @@ import { TetrisPanel } from "./TetrisPanel.js";
 import { PuzzlePanel } from "./PuzzlePanel.js";
 import { CodenamesAssign } from "./CodenamesAssign.js";
 import { ReadyPanel } from "./ReadyPanel.js";
+import { ExplanationScreen } from "./ExplanationScreen.js";
 import { SandboxMenu } from "./SandboxMenu.js";
 import { Wheel } from "./Wheel.js";
 import { Countdown } from "./Countdown.js";
 import { Podium } from "./Podium.js";
 
 export function GameScreen({ seat }: { seat: SeatState }) {
+  // Briefly hold the results podium so the board's forward-hop animation plays
+  // in the open first, then the podium slides in over it.
+  const resultsActive = seat.minigamePhase === "results" && !!seat.lastResult;
+  const [podiumReady, setPodiumReady] = useState(false);
+  useEffect(() => {
+    if (!resultsActive) {
+      setPodiumReady(false);
+      return;
+    }
+    const t = setTimeout(() => setPodiumReady(true), 1500);
+    return () => clearTimeout(t);
+  }, [resultsActive]);
+
   const lobby = seat.lobby;
   if (!lobby) return null;
 
@@ -103,13 +117,16 @@ export function GameScreen({ seat }: { seat: SeatState }) {
 
   const spinning = seat.minigamePhase === "spinning" && !!seat.wheel;
   const assigning = seat.minigamePhase === "assigning" && !!seat.assign;
+  const explaining = seat.minigamePhase === "explaining" && !!seat.explainGame;
   const countingDown = seat.minigamePhase === "countdown" && !!seat.countdown;
-  const showPodium = !isFinished && seat.minigamePhase === "results" && !!seat.lastResult;
-  // Between minigames we stay on the board and gate the next game behind a
-  // ready vote (host can force-start), rather than dropping back to the lobby.
+  const showPodium = !isFinished && resultsActive && podiumReady;
+  // Between minigames we stay on the board. With explanations OFF, a ready vote
+  // on the board paces the next round; with them ON, the explanation screen is
+  // the ready-gate instead (so there's exactly one gate per round).
   const inIntermission =
     !isFinished && (seat.minigamePhase === "results" || seat.minigamePhase === "intermission");
-  const showReady = inIntermission && !spinning && !assigning && !countingDown;
+  const showReady =
+    inIntermission && !spinning && !assigning && !countingDown && !lobby.settings.explanations;
 
   return (
     <div className="game-wrap board-stage">
@@ -122,6 +139,10 @@ export function GameScreen({ seat }: { seat: SeatState }) {
       {spinning && seat.wheel && <Wheel wheel={seat.wheel} />}
 
       {assigning && <CodenamesAssign seat={seat} />}
+
+      {explaining && seat.explainGame && (
+        <ExplanationScreen seat={seat} game={seat.explainGame} />
+      )}
 
       {countingDown && seat.countdown && (
         <Countdown game={seat.countdown.game} endsAt={seat.countdown.endsAt} />

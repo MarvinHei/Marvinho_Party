@@ -6,11 +6,18 @@ import { DEBUG_FEATURE_ENABLED } from "../features.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
+import { GAME_ICON } from "./gameInfo.js";
 
 function initialCode(): string {
   const params = new URLSearchParams(window.location.search);
   return (params.get("lobby") ?? "").toUpperCase();
 }
+
+// Order used for the showcase strip.
+const SHOWCASE: MinigameType[] = [
+  "wordle", "tetris", "skribbl", "codenames", "queens",
+  "zip", "sudoku", "tango", "skribblteams", "findword",
+];
 
 export function HomeScreen({ seat }: { seat: SeatState }) {
   const snap = useStore();
@@ -61,83 +68,103 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
   const canPlay = nickname.trim().length > 0 && seat.connected && !busy;
 
   return (
-    <div className="center-stage" style={{ flexDirection: "column", gap: 16 }}>
-      <div className="panel" style={{ width: 420, maxWidth: "100%" }}>
-        <h1 className="title">Marvinho Party</h1>
-        <p className="subtitle">Win minigames. Race to the finish.</p>
-        <AudioVisualizer variant="bars" className="home-visualizer" height={44} />
+    <div className="home-stage">
+      {/* Left: branding + showcase */}
+      <section className="home-hero">
+        <h1 className="title home-title">Marvinho Party</h1>
+        <p className="home-lede">
+          A pixel party of quick minigames. Win them, race across the board, and
+          be first to the finish.
+        </p>
+        <AudioVisualizer variant="bars" className="home-hero-viz" height={56} />
 
-        <div className="stack">
-          <div>
-            <label>Your nickname</label>
-            <input
-              type="text"
-              value={nickname}
-              maxLength={16}
-              placeholder="e.g. Marvinho"
-              onChange={(e) => setNickname(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && canPlay && create()}
-              autoFocus
-            />
-          </div>
+        <div className="home-showcase">
+          {SHOWCASE.map((g) => (
+            <div key={g} className="showcase-chip" title={MINIGAME_NAMES[g]}>
+              <span className="showcase-emoji" aria-hidden>{GAME_ICON[g]}</span>
+              <span className="showcase-name">{MINIGAME_NAMES[g]}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
-          <button className="btn wide pink" disabled={!canPlay} onClick={create}>
-            Create Lobby
-          </button>
+      {/* Right: join / create */}
+      <section className="home-join">
+        <div className="panel home-join-card">
+          <h2 className="pixel" style={{ fontSize: 15, marginTop: 0 }}>Join the party</h2>
 
-          <div className="row">
-            <div style={{ flex: 1 }}>
-              <label>Lobby code</label>
+          <div className="stack">
+            <div>
+              <label>Your nickname</label>
               <input
                 type="text"
-                value={code}
-                maxLength={4}
-                placeholder="ABCD"
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                value={nickname}
+                maxLength={16}
+                placeholder="e.g. Marvinho"
+                onChange={(e) => setNickname(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canPlay && create()}
+                autoFocus
               />
             </div>
-            <button
-              className="btn secondary"
-              style={{ alignSelf: "flex-end" }}
-              disabled={!canPlay || code.trim().length < 4}
-              onClick={join}
-            >
-              Join
+
+            <button className="btn wide pink" disabled={!canPlay} onClick={create}>
+              Create Lobby
             </button>
-          </div>
 
-          <div className="error">{seat.error}</div>
-          {!seat.connected && (
-            <div className="hint">Connecting to server…</div>
-          )}
-        </div>
-      </div>
+            <div className="home-or"><span>or join with a code</span></div>
 
-      {DEBUG_FEATURE_ENABLED && snap.debugEnabled && (
-        <div className="panel practice-panel" style={{ width: 420, maxWidth: "100%" }}>
-          <h3 className="pixel" style={{ fontSize: 12, margin: "0 0 4px", color: "var(--warn)" }}>
-            🐛 Practice a minigame
-          </h3>
-          <p className="hint" style={{ margin: "0 0 12px", fontSize: 16 }}>
-            Launch any game standalone to test it — no board, no scoreboard.
-            Bots are spawned automatically.
-          </p>
-          <div className="practice-grid">
-            {PRACTICE_ORDER.map((game) => (
+            <div className="row">
+              <div style={{ flex: 1 }}>
+                <label>Lobby code</label>
+                <input
+                  type="text"
+                  value={code}
+                  maxLength={4}
+                  placeholder="ABCD"
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && canPlay && code.trim().length >= 4 && join()}
+                />
+              </div>
               <button
-                key={game}
-                className="practice-btn"
-                disabled={practiceBusy || !seat.connected}
-                onClick={() => practice(game)}
+                className="btn secondary"
+                style={{ alignSelf: "flex-end" }}
+                disabled={!canPlay || code.trim().length < 4}
+                onClick={join}
               >
-                <span className="practice-emoji">{PRACTICE_ICON[game]}</span>
-                <span className="practice-name">{MINIGAME_NAMES[game]}</span>
-                <span className="practice-req">{REQUIRED_PLAYERS[game]}P</span>
+                Join
               </button>
-            ))}
+            </div>
+
+            <div className="error">{seat.error}</div>
+            {!seat.connected && <div className="hint">Connecting to server…</div>}
           </div>
         </div>
-      )}
+
+        {DEBUG_FEATURE_ENABLED && snap.debugEnabled && (
+          <div className="panel practice-panel">
+            <h3 className="pixel" style={{ fontSize: 12, margin: "0 0 4px", color: "var(--warn)" }}>
+              🐛 Practice a minigame
+            </h3>
+            <p className="hint" style={{ margin: "0 0 12px", fontSize: 16 }}>
+              Launch any game standalone to test it — bots are spawned automatically.
+            </p>
+            <div className="practice-grid">
+              {PRACTICE_ORDER.map((game) => (
+                <button
+                  key={game}
+                  className="practice-btn"
+                  disabled={practiceBusy || !seat.connected}
+                  onClick={() => practice(game)}
+                >
+                  <span className="practice-emoji">{PRACTICE_ICON[game]}</span>
+                  <span className="practice-name">{MINIGAME_NAMES[game]}</span>
+                  <span className="practice-req">{REQUIRED_PLAYERS[game]}P</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

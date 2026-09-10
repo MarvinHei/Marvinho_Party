@@ -84,7 +84,14 @@ export class SkribblTeamsGame {
   private reveal: string | null = null;
   private revealedLetters = new Set<number>();
 
-  constructor(teams: TeamSpec[], players: PlayerInfo[]) {
+  private readonly roundSeconds: number;
+
+  constructor(
+    teams: TeamSpec[],
+    players: PlayerInfo[],
+    roundSeconds: number = SKRIBBL_TEAMS_CONFIG.roundSeconds,
+  ) {
+    this.roundSeconds = roundSeconds;
     this.teamSize = teams[0]?.memberIds.length ?? 0;
     this.teams = teams.map((t) => ({
       ...t,
@@ -134,7 +141,7 @@ export class SkribblTeamsGame {
     this.roundIndex++;
     this.word = pickWord();
     this.roundStart = Date.now();
-    this.endsAt = this.roundStart + SKRIBBL_TEAMS_CONFIG.roundSeconds * 1000;
+    this.endsAt = this.roundStart + this.roundSeconds * 1000;
     this.phase = "drawing";
     this.reveal = null;
     this.revealedLetters.clear();
