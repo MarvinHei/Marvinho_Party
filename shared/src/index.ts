@@ -4,7 +4,7 @@
 // ============================================================================
 
 export * from "./puzzles.js";
-import type { PuzzleGame, PuzzleSpec, PuzzleStanding } from "./puzzles.js";
+import type { PuzzleDifficulty, PuzzleGame, PuzzleSpec, PuzzleStanding } from "./puzzles.js";
 
 // ---------------------------------------------------------------------------
 // Constants / tunables
@@ -157,6 +157,8 @@ export interface LobbyView {
   winnerId: string | null;
   /** Which minigame is active/last, for UI routing. */
   currentMinigame: MinigameType | null;
+  /** Host-selected difficulty for the puzzle-race minigames. */
+  puzzleDifficulty: PuzzleDifficulty;
   /** Debug practice mode: play minigames standalone, no board/scoreboard. */
   sandbox: boolean;
 }
@@ -523,6 +525,12 @@ export interface ClientToServerEvents {
   /** Host-only: remove another player from the lobby. */
   "lobby:kick": (
     payload: { playerId: string },
+    ack: (res: Ack<null>) => void,
+  ) => void;
+
+  /** Host-only: set the puzzle difficulty for the lobby. */
+  "lobby:setDifficulty": (
+    payload: { difficulty: PuzzleDifficulty },
     ack: (res: Ack<null>) => void,
   ) => void;
 

@@ -13,6 +13,17 @@ export const PUZZLE_ROUND_SECONDS: Record<PuzzleGame, number> = {
   tango: 240,
 };
 
+/** Host-selectable difficulty applied to all puzzle-race minigames. */
+export type PuzzleDifficulty = "easy" | "medium" | "hard";
+
+export const PUZZLE_DIFFICULTIES: PuzzleDifficulty[] = ["easy", "medium", "hard"];
+
+export const PUZZLE_DIFFICULTY_LABELS: Record<PuzzleDifficulty, string> = {
+  easy: "Easy",
+  medium: "Medium",
+  hard: "Hard",
+};
+
 // --- puzzle definitions -----------------------------------------------------
 
 export interface ZipPuzzle {

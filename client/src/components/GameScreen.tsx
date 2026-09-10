@@ -14,7 +14,6 @@ import { SandboxMenu } from "./SandboxMenu.js";
 import { Wheel } from "./Wheel.js";
 import { Countdown } from "./Countdown.js";
 import { Podium } from "./Podium.js";
-import { ReadyPanel } from "./ReadyPanel.js";
 
 export function GameScreen({ seat }: { seat: SeatState }) {
   const lobby = seat.lobby;
@@ -103,9 +102,6 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   const assigning = seat.minigamePhase === "assigning" && !!seat.assign;
   const countingDown = seat.minigamePhase === "countdown" && !!seat.countdown;
   const showPodium = !isFinished && seat.minigamePhase === "results" && !!seat.lastResult;
-  const showReady =
-    !isFinished &&
-    (seat.minigamePhase === "results" || seat.minigamePhase === "intermission");
 
   return (
     <div className="game-wrap board-stage">
@@ -122,8 +118,6 @@ export function GameScreen({ seat }: { seat: SeatState }) {
       )}
 
       {showPodium && seat.lastResult && <Podium result={seat.lastResult} />}
-
-      {showReady && <ReadyPanel seat={seat} withPodium={showPodium} />}
     </div>
   );
 }
@@ -144,14 +138,16 @@ function WinnerOverlay({ seat }: { seat: SeatState }) {
           {winner?.nickname ?? "Someone"} wins!
         </h1>
         <p className="subtitle">Marvinho Party champion</p>
+        <p className="hint" style={{ marginTop: 8 }}>Returning to the lobby…</p>
         <button
-          className="btn pink"
+          className="btn secondary"
+          style={{ marginTop: 8 }}
           onClick={() => {
             store.net(seat.id)?.leave();
             window.location.href = window.location.origin;
           }}
         >
-          Back to menu
+          Leave lobby
         </button>
       </div>
     </div>

@@ -64,14 +64,12 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
     .join(" ");
 
   return (
-    <div className="zip-board" style={{ width: BOARD_PX }}>
+    <div className="zip-board">
       <div
         className="zip-grid"
         style={{
           gridTemplateColumns: `repeat(${N}, 1fr)`,
           gridTemplateRows: `repeat(${N}, 1fr)`,
-          width: BOARD_PX,
-          height: BOARD_PX,
         }}
       >
         {Array.from({ length: N * N }, (_, i) => {
@@ -94,7 +92,7 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
           );
         })}
       </div>
-      <svg className="zip-lines" width={BOARD_PX} height={BOARD_PX} viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}>
+      <svg className="zip-lines" viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`} preserveAspectRatio="none">
         {path.length > 1 && (
           <polyline
             points={points}

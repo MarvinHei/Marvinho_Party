@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateQueens, type QueensPuzzle } from "@marvinho/shared";
 
-const BOARD_PX = 384;
 const REGION_COLORS = [
   "#e6394b", "#3aa0ff", "#42d17a", "#ffd23f",
   "#b06bff", "#ff8c42", "#28e0d0", "#ff6fcf",
@@ -33,6 +32,21 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
     setCells((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
   }
 
+  // Queens that clash: share a row, column or region, or touch (incl. diagonally).
+  const queens: number[] = [];
+  cells.forEach((v, i) => v === 2 && queens.push(i));
+  const bad = new Set<number>();
+  for (let a = 0; a < queens.length; a++)
+    for (let b = a + 1; b < queens.length; b++) {
+      const ia = queens[a], ib = queens[b];
+      const ra = Math.floor(ia / N), ca = ia % N;
+      const rb = Math.floor(ib / N), cb = ib % N;
+      if (ra === rb || ca === cb || puzzle.regions[ia] === puzzle.regions[ib] ||
+          (Math.abs(ra - rb) <= 1 && Math.abs(ca - cb) <= 1)) {
+        bad.add(ia); bad.add(ib);
+      }
+    }
+
   const border = (i: number) => {
     const r = Math.floor(i / N), c = i % N;
     const reg = puzzle.regions[i];
@@ -54,14 +68,12 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
       style={{
         gridTemplateColumns: `repeat(${N}, 1fr)`,
         gridTemplateRows: `repeat(${N}, 1fr)`,
-        width: BOARD_PX,
-        height: BOARD_PX,
       }}
     >
       {cells.map((v, i) => (
         <div
           key={i}
-          className="queens-cell"
+          className={`queens-cell${v === 2 && bad.has(i) ? " conflict" : ""}`}
           style={{ background: REGION_COLORS[puzzle.regions[i] % REGION_COLORS.length], ...border(i) }}
           onClick={() => cycle(i)}
         >

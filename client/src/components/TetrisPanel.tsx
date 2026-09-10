@@ -210,8 +210,8 @@ class Engine {
     this.lines += cleared;
     this.lastSent = cleared;
 
-    // Garbage only lands when you did NOT clear a line this lock.
-    if (cleared === 0) this.flushGarbage();
+    // Pending garbage from opponents lands as soon as the current piece locks.
+    this.flushGarbage();
 
     this.spawn();
   }
@@ -296,6 +296,15 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
   const [pending, setPending] = useState(0);
   const [target, setTarget] = useState<string>("random");
   const garbageProcessed = useRef(0);
+  // On-screen control actions, wired up inside the engine effect below.
+  const actionsRef = useRef<{
+    left: () => void;
+    right: () => void;
+    rotate: () => void;
+    hold: () => void;
+    hardDrop: () => void;
+    setSoft: (on: boolean) => void;
+  } | null>(null);
 
   const opponents = useMemo(
     () => (init?.players ?? []).filter((p) => p.id !== me),
@@ -365,7 +374,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           afterLock();
         }
       }
-      if (sinceSnap >= 500) {
+      if (sinceSnap >= 250) {
         sinceSnap = 0;
         sendBoard();
       }
@@ -428,10 +437,29 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    // Wire up on-screen (touch) controls to the same engine actions.
+    const guard = () => !eng.dead && startsIn() <= 0;
+    actionsRef.current = {
+      left: () => { if (guard()) { eng.move(-1, 0); draw(); } },
+      right: () => { if (guard()) { eng.move(1, 0); draw(); } },
+      rotate: () => { if (guard()) { eng.rotate(1); draw(); } },
+      hold: () => { if (guard()) { eng.holdSwap(); sync(); draw(); } },
+      hardDrop: () => {
+        if (!guard()) return;
+        while (eng.move(0, 1)) { /* hard drop */ }
+        eng.lock();
+        afterLock();
+        acc = 0;
+        draw();
+      },
+      setSoft: (on: boolean) => { soft.on = on; },
+    };
+
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      actionsRef.current = null;
       engRef.current = null;
     };
     // Re-create the engine only when a new match is initialized.
@@ -493,6 +521,42 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
         </div>
         <div className="tetris-help hint">
           ← → move · ↑ rotate · ↓ soft drop · Space hard drop · C hold
+        </div>
+
+        <div className="tetris-controls">
+          <button
+            className="tctl"
+            aria-label="Move left"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.left(); }}
+          >◀</button>
+          <button
+            className="tctl"
+            aria-label="Rotate"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.rotate(); }}
+          >⟳</button>
+          <button
+            className="tctl"
+            aria-label="Move right"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.right(); }}
+          >▶</button>
+          <button
+            className="tctl"
+            aria-label="Hold"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.hold(); }}
+          >Hold</button>
+          <button
+            className="tctl"
+            aria-label="Soft drop"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.setSoft(true); }}
+            onPointerUp={() => actionsRef.current?.setSoft(false)}
+            onPointerLeave={() => actionsRef.current?.setSoft(false)}
+            onPointerCancel={() => actionsRef.current?.setSoft(false)}
+          >▼</button>
+          <button
+            className="tctl drop"
+            aria-label="Hard drop"
+            onPointerDown={(e) => { e.preventDefault(); actionsRef.current?.hardDrop(); }}
+          >⤓</button>
         </div>
       </div>
 

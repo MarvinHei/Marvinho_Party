@@ -294,6 +294,12 @@ export class Net {
     });
   }
 
+  setDifficulty(difficulty: import("@marvinho/shared").PuzzleDifficulty): Promise<null> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:setDifficulty", { difficulty }, (res) => this.ack(res, resolve, reject));
+    });
+  }
+
   debugStart(game: import("@marvinho/shared").MinigameType): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:debugStart", { game }, (res) => this.ack(res, resolve, reject));

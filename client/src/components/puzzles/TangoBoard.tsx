@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateTango, type TangoPuzzle } from "@marvinho/shared";
 
-const BOARD_PX = 384;
 const ICON = ["", "☀️", "🌙"]; // index by cell value
 
 interface Props {
@@ -12,7 +11,6 @@ interface Props {
 
 export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
   const N = puzzle.size;
-  const cell = BOARD_PX / N;
   const [grid, setGrid] = useState<number[]>(() => puzzle.givens.slice());
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
@@ -28,15 +26,50 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
     setGrid((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
   }
 
+  // --- rule-violation highlighting ---
+  const badCells = new Set<number>();
+  const badCons = new Set<number>();
+  const half = N / 2;
+  // three-in-a-row (horizontal + vertical)
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      const i = r * N + c;
+      const v = grid[i];
+      if (!v) continue;
+      if (c < N - 2 && grid[i + 1] === v && grid[i + 2] === v) { badCells.add(i); badCells.add(i + 1); badCells.add(i + 2); }
+      if (r < N - 2 && grid[i + N] === v && grid[i + 2 * N] === v) { badCells.add(i); badCells.add(i + N); badCells.add(i + 2 * N); }
+    }
+  // too many of one symbol in a row / column
+  for (let r = 0; r < N; r++)
+    for (const val of [1, 2]) {
+      const idxs: number[] = [];
+      for (let c = 0; c < N; c++) if (grid[r * N + c] === val) idxs.push(r * N + c);
+      if (idxs.length > half) idxs.forEach((i) => badCells.add(i));
+    }
+  for (let c = 0; c < N; c++)
+    for (const val of [1, 2]) {
+      const idxs: number[] = [];
+      for (let r = 0; r < N; r++) if (grid[r * N + c] === val) idxs.push(r * N + c);
+      if (idxs.length > half) idxs.forEach((i) => badCells.add(i));
+    }
+  // violated = / × constraints (only once both ends are filled)
+  puzzle.constraints.forEach((con, k) => {
+    const va = grid[con.a], vb = grid[con.b];
+    if (!va || !vb) return;
+    if ((con.kind === "eq" && va !== vb) || (con.kind === "neq" && va === vb)) {
+      badCons.add(k);
+      badCells.add(con.a);
+      badCells.add(con.b);
+    }
+  });
+
   return (
-    <div className="tango-board" style={{ width: BOARD_PX, height: BOARD_PX }}>
+    <div className="tango-board">
       <div
         className="tango-grid"
         style={{
           gridTemplateColumns: `repeat(${N}, 1fr)`,
           gridTemplateRows: `repeat(${N}, 1fr)`,
-          width: BOARD_PX,
-          height: BOARD_PX,
         }}
       >
         {grid.map((v, i) => {
@@ -44,7 +77,7 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
           return (
             <div
               key={i}
-              className={`tango-cell${given ? " given" : ""}`}
+              className={`tango-cell${given ? " given" : ""}${badCells.has(i) ? " conflict" : ""}`}
               onClick={() => cycle(i)}
             >
               <span className="tango-icon">{ICON[v]}</span>
@@ -56,13 +89,13 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
         {puzzle.constraints.map((con, k) => {
           const ra = Math.floor(con.a / N), ca = con.a % N;
           const horizontal = con.b === con.a + 1;
-          const x = horizontal ? (ca + 1) * cell : (ca + 0.5) * cell;
-          const y = horizontal ? (ra + 0.5) * cell : (ra + 1) * cell;
+          const x = (horizontal ? ca + 1 : ca + 0.5) / N * 100;
+          const y = (horizontal ? ra + 0.5 : ra + 1) / N * 100;
           return (
             <div
               key={k}
-              className="tango-con"
-              style={{ left: x, top: y }}
+              className={`tango-con${badCons.has(k) ? " bad" : ""}`}
+              style={{ left: `${x}%`, top: `${y}%` }}
             >
               {con.kind === "eq" ? "=" : "×"}
             </div>

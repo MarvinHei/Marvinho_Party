@@ -21,6 +21,7 @@ import {
   type MinigameResult,
   type MinigameType,
   type PlayerView,
+  type PuzzleDifficulty,
   type PuzzleGame,
   type PuzzleStanding,
   type ScoreRow,
@@ -59,6 +60,10 @@ const teamColor = (t: CodenamesTeam) => (t === "a" ? "#e6394b" : "#3aa0ff");
 /** Timings for the pre-game sequence (ms). */
 const ASSIGN_MS = 4500;
 const COUNTDOWN_MS = 5000;
+/** How long the results podium shows before returning to the lobby (ms). */
+const RESULTS_MS = 6500;
+/** How long the winner celebration shows before returning to the lobby (ms). */
+const MATCH_END_MS = 9000;
 
 function shuffled<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -89,6 +94,7 @@ export class Lobby {
   private tetris: TetrisMatch | null = null;
   private puzzle: PuzzleRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
+  private puzzleDifficulty: PuzzleDifficulty = "medium";
   private sandbox = false;
   private timers: NodeJS.Timeout[] = [];
   private interval: NodeJS.Timeout | null = null;
@@ -236,13 +242,8 @@ export class Lobby {
     if (this.connectedPlayers().length < GAME_CONFIG.minPlayers) {
       throw new Error(`Need at least ${GAME_CONFIG.minPlayers} players.`);
     }
-    this.beginIntermission();
-  }
-
-  private beginIntermission(): void {
-    this.phase = "intermission";
-    this.resetReady();
-    this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
+    // Host presses Start in the lobby → spin the wheel for the next game.
+    this.spinWheel();
   }
 
   private resetReady(): void {
@@ -262,6 +263,14 @@ export class Lobby {
     if (!this.isHost(playerId)) throw new Error("Only the host can start.");
     if (this.phase !== "intermission") throw new Error("Nothing to start.");
     this.spinWheel();
+  }
+
+  /** Host-only: choose the puzzle difficulty (only while in the lobby). */
+  setDifficulty(hostId: string, difficulty: PuzzleDifficulty): void {
+    if (!this.isHost(hostId)) throw new Error("Only the host can change difficulty.");
+    if (this.phase !== "lobby") throw new Error("Difficulty can only change in the lobby.");
+    this.puzzleDifficulty = difficulty;
+    this.broadcastLobby();
   }
 
   /** Host-only: remove another player while still in the lobby. */
@@ -329,7 +338,14 @@ export class Lobby {
   }
 
   private spinWheel(): void {
-    const options = this.availableGames();
+    const all = this.availableGames();
+    // Never offer the game that was just played (unless it's the only option).
+    const prev = this.currentMinigame;
+    let options = all;
+    if (prev && all.length > 1) {
+      const filtered = all.filter((g) => g !== prev);
+      if (filtered.length > 0) options = filtered;
+    }
     const chosen = options[Math.floor(Math.random() * options.length)];
     this.currentMinigame = chosen;
     this.phase = "spinning";
@@ -1010,7 +1026,7 @@ export class Lobby {
 
   private startPuzzle(game: PuzzleGame): void {
     const participants = this.connectedPlayers();
-    const { spec } = generatePuzzle(game);
+    const { spec } = generatePuzzle(game, this.puzzleDifficulty);
     this.phase = "minigame";
     this.currentMinigame = game;
     this.puzzle = new PuzzleRound(participants.map((p) => p.id), spec);
@@ -1106,12 +1122,31 @@ export class Lobby {
         winnerId: this.winnerId,
         lobby: this.toView(),
       });
+      // After the celebration, reset the board and return everyone to the OPEN
+      // lobby (not the home page) so they can start a fresh match.
+      this.schedule(() => {
+        for (const p of this.players.values()) {
+          p.position = 0;
+          p.ready = false;
+        }
+        this.winnerId = null;
+        this.currentMinigame = null;
+        this.phase = "lobby";
+        this.broadcastLobby();
+      }, MATCH_END_MS);
       return;
     }
 
+    // Show the results podium briefly, then return everyone to the lobby so the
+    // host can start the next game. The board race (positions) carries over.
     this.phase = "intermission";
     this.resetReady();
     this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
+    this.schedule(() => {
+      this.phase = "lobby";
+      this.resetReady();
+      this.broadcastLobby();
+    }, RESULTS_MS);
   }
 
   // --- views --------------------------------------------------------------
@@ -1138,6 +1173,7 @@ export class Lobby {
       minPlayers: GAME_CONFIG.minPlayers,
       winnerId: this.winnerId,
       currentMinigame: this.currentMinigame,
+      puzzleDifficulty: this.puzzleDifficulty,
       sandbox: this.sandbox,
     };
   }

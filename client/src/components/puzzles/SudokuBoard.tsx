@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateSudoku, type SudokuPuzzle } from "@marvinho/shared";
 
-const BOARD_PX = 384;
-
 interface Props {
   puzzle: SudokuPuzzle;
   disabled: boolean;
@@ -64,8 +62,6 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
         style={{
           gridTemplateColumns: `repeat(${N}, 1fr)`,
           gridTemplateRows: `repeat(${N}, 1fr)`,
-          width: BOARD_PX,
-          height: BOARD_PX,
         }}
       >
         {grid.map((v, i) => {
@@ -75,10 +71,9 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
           if (given) cls.push("given");
           if (sel === i) cls.push("sel");
           if (conflict(i)) cls.push("conflict");
-          if (c % puzzle.boxCols === 0) cls.push("box-l");
-          if (r % puzzle.boxRows === 0) cls.push("box-t");
-          if (c === N - 1) cls.push("box-r");
-          if (r === N - 1) cls.push("box-b");
+          // Thick dividers between the 2×3 boxes (not on the outer edge).
+          if ((c + 1) % puzzle.boxCols === 0 && c !== N - 1) cls.push("bdiv-r");
+          if ((r + 1) % puzzle.boxRows === 0 && r !== N - 1) cls.push("bdiv-b");
           return (
             <div key={i} className={cls.join(" ")} onClick={() => setSel(i)}>
               {v !== 0 ? v : ""}
