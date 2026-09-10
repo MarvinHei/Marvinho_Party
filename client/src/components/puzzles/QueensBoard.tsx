@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateQueens, type QueensPuzzle } from "@marvinho/shared";
+import { sfx } from "../../audio/audio.js";
 
 const REGION_COLORS = [
   "#e6394b", "#3aa0ff", "#42d17a", "#ffd23f",
@@ -29,7 +30,11 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
 
   function cycle(i: number) {
     if (disabled) return;
-    setCells((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
+    setCells((prev) => {
+      const next = (prev[i] + 1) % 3;
+      sfx(next === 2 ? "place" : "click"); // "place" when a queen goes down
+      return prev.map((v, idx) => (idx === i ? next : v));
+    });
   }
 
   // Queens that clash: share a row, column or region, or touch (incl. diagonally).

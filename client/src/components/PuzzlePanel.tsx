@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { MINIGAME_NAMES } from "@marvinho/shared";
 import { store } from "../state/store.js";
+import { sfx } from "../audio/audio.js";
+import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { ZipBoard } from "./puzzles/ZipBoard.js";
 import { QueensBoard } from "./puzzles/QueensBoard.js";
@@ -31,7 +33,10 @@ export function PuzzlePanel({ seat }: { seat: SeatState }) {
     if (!net || solved) return;
     try {
       const res = await net.puzzleSubmit(solution);
-      if (res.solved) store.setPuzzleSolved(seat.id);
+      if (res.solved) {
+        store.setPuzzleSolved(seat.id);
+        sfx("correct");
+      }
     } catch {
       /* ignore */
     }
@@ -48,11 +53,14 @@ export function PuzzlePanel({ seat }: { seat: SeatState }) {
       <TangoBoard puzzle={p.spec.tango} disabled={solved} onSolved={onSolved} />
     );
 
+  const lowTime = secondsLeft <= 10 && secondsLeft > 0 && !solved;
+
   return (
     <div className="puzzle-wrap">
+      <TimerTick seconds={secondsLeft} active={lowTime} />
       <div className="puzzle-top">
         <div className="puzzle-name pixel">{MINIGAME_NAMES[p.game]}</div>
-        <div className="puzzle-timer pixel">⏱ {secondsLeft}s</div>
+        <div className={`puzzle-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>
       </div>
 
       <div className="puzzle-body">

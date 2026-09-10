@@ -2218,3 +2218,190 @@ input[type="text"]:focus {
   .findword-wrap { padding: 10px; }
   .queens-cell { font-size: clamp(18px, 6vw, 26px); }
 }
+
+/* ============================================================================
+   Audio UI, visualizers, timer urgency & interaction/idle animations
+   ========================================================================== */
+
+/* ---- Music control (floating, top-right) ---- */
+.music-control {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 0 2px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+}
+.music-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
+}
+.music-btn:hover { transform: translateY(-1px); box-shadow: 0 0 10px rgba(255, 111, 207, 0.5); }
+.music-btn:active { transform: translateY(1px) scale(0.96); }
+.music-btn.muted { opacity: 0.7; background: var(--bg-1); }
+.music-icon { font-size: 14px; line-height: 1; }
+/* Little animated equalizer next to the note icon */
+.music-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.music-bars i {
+  width: 3px;
+  background: var(--accent-2);
+  border-radius: 1px;
+  animation: eqBar 0.9s ease-in-out infinite;
+}
+.music-bars i:nth-child(1) { height: 40%; animation-delay: 0s; }
+.music-bars i:nth-child(2) { height: 80%; animation-delay: 0.15s; }
+.music-bars i:nth-child(3) { height: 55%; animation-delay: 0.3s; }
+.music-bars i:nth-child(4) { height: 95%; animation-delay: 0.45s; }
+@keyframes eqBar { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+.music-slider { width: 76px; accent-color: var(--accent-2); cursor: pointer; }
+.music-slider:disabled { opacity: 0.4; }
+@media (max-width: 640px) {
+  .music-slider { display: none; }
+  .music-control { top: 8px; right: 8px; }
+}
+
+/* ---- Audio visualizers ---- */
+.home-visualizer {
+  display: block;
+  width: 100%;
+  margin: 4px 0 2px;
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+.board-visualizer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  pointer-events: none;
+  opacity: 0.4;
+  z-index: 0;
+}
+
+/* ---- Timer urgency (low time) ---- */
+.timer.low,
+.puzzle-timer.low {
+  color: var(--bad);
+  animation: timerPulse 1s ease-in-out infinite;
+}
+@keyframes timerPulse {
+  0%, 100% { transform: scale(1); text-shadow: 0 0 0 rgba(230, 57, 75, 0); }
+  50% { transform: scale(1.14); text-shadow: 0 0 10px rgba(230, 57, 75, 0.9); }
+}
+
+/* ============================================================================
+   Interaction feedback + idle animations
+   ========================================================================== */
+
+/* Puzzle cells: tactile press + hover lift */
+.tango-cell,
+.queens-cell,
+.sudoku-cell,
+.zip-cell {
+  transition: transform 0.08s ease, box-shadow 0.12s ease, background 0.15s ease;
+}
+.tango-cell:not(.given):hover,
+.queens-cell:hover,
+.sudoku-cell:not(.given):hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 2px rgba(255, 210, 63, 0.55);
+  cursor: pointer;
+}
+.tango-cell:not(.given):active,
+.queens-cell:active,
+.sudoku-cell:not(.given):active,
+.zip-cell:active {
+  transform: scale(0.92);
+}
+
+/* Pop the icon/number when it changes */
+.tango-icon,
+.q-queen,
+.sudoku-cell {
+  animation: cellPop 0.18s ease;
+}
+@keyframes cellPop {
+  0% { transform: scale(0.5); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* On-screen keys / number pad: springy press */
+.wk-key,
+.pad-btn {
+  transition: transform 0.06s ease, box-shadow 0.1s ease, background 0.15s ease;
+}
+.wk-key:hover,
+.pad-btn:hover { transform: translateY(-1px); }
+.wk-key:active,
+.pad-btn:active { transform: translateY(2px) scale(0.94); }
+
+/* Wordle: gentle idle pulse on the active (current) row's empty cells */
+.wordle-row:has(.wordle-cell.filled) .wordle-cell:not(.filled):not(.correct):not(.present):not(.absent) {
+  animation: idleCellPulse 1.6s ease-in-out infinite;
+}
+@keyframes idleCellPulse {
+  0%, 100% { border-color: var(--border); }
+  50% { border-color: var(--accent-2); box-shadow: inset 0 0 8px rgba(255, 111, 207, 0.25); }
+}
+
+/* Home title: subtle floating idle */
+.title {
+  animation: titleFloat 4s ease-in-out infinite;
+}
+@keyframes titleFloat {
+  0%, 100% { transform: translateY(0) rotate(-0.4deg); }
+  50% { transform: translateY(-4px) rotate(0.4deg); }
+}
+
+/* Practice buttons & generic mini-buttons: press feedback */
+.practice-btn { transition: transform 0.08s ease, box-shadow 0.15s ease; }
+.practice-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4); }
+.practice-btn:active { transform: translateY(0) scale(0.97); }
+
+/* Difficulty buttons: idle glow on the selected one */
+.diff-btn.on {
+  animation: selectedGlow 2s ease-in-out infinite;
+}
+@keyframes selectedGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 210, 63, 0); }
+  50% { box-shadow: 0 0 12px 1px rgba(255, 210, 63, 0.6); }
+}
+
+/* Lobby code: gentle attention pulse so players notice it */
+.lobby-code {
+  animation: codeGlow 2.4s ease-in-out infinite;
+}
+@keyframes codeGlow {
+  0%, 100% { text-shadow: 0 0 0 rgba(58, 160, 255, 0); }
+  50% { text-shadow: 0 0 14px rgba(58, 160, 255, 0.7); }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .title,
+  .diff-btn.on,
+  .lobby-code,
+  .music-bars i,
+  .timer.low,
+  .puzzle-timer.low,
+  .wordle-row .wordle-cell {
+    animation: none !important;
+  }
+}

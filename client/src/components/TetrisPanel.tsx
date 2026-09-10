@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TETRIS_CONFIG } from "@marvinho/shared";
 import { store } from "../state/store.js";
+import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 
 const COLS = TETRIS_CONFIG.cols;
@@ -332,6 +333,8 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
     const sendBoard = () => net?.tetrisBoard(eng.serialize(), eng.lines);
 
     const afterLock = () => {
+      // A cleared line gets the brighter sweep; a plain landing gets the thud.
+      sfx(eng.lastSent > 0 ? "lineclear" : "lock");
       if (eng.lastSent > 0) net?.tetrisLines(eng.lastSent);
       eng.lastSent = 0;
       sendBoard();

@@ -22,7 +22,15 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function normalize(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
+  // Case-, whitespace- and diacritic-insensitive so German words are forgiving:
+  // "Äffchen" matches "affchen"/"äffchen", "Straße" matches "strasse".
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }
 
 /** Classic Levenshtein edit distance. */

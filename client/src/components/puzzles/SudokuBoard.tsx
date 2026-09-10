@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateSudoku, type SudokuPuzzle } from "@marvinho/shared";
+import { sfx } from "../../audio/audio.js";
 
 interface Props {
   puzzle: SudokuPuzzle;
@@ -22,6 +23,7 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
 
   function set(i: number, val: number) {
     if (disabled || puzzle.givens[i] !== 0) return;
+    sfx(val !== 0 ? "place" : "click");
     setGrid((prev) => prev.map((v, idx) => (idx === i ? val : v)));
   }
 
@@ -75,7 +77,14 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
           if ((c + 1) % puzzle.boxCols === 0 && c !== N - 1) cls.push("bdiv-r");
           if ((r + 1) % puzzle.boxRows === 0 && r !== N - 1) cls.push("bdiv-b");
           return (
-            <div key={i} className={cls.join(" ")} onClick={() => setSel(i)}>
+            <div
+              key={i}
+              className={cls.join(" ")}
+              onClick={() => {
+                if (!given) sfx("click");
+                setSel(i);
+              }}
+            >
               {v !== 0 ? v : ""}
             </div>
           );

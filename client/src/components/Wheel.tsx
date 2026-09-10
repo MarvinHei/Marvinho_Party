@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
+import { sfx } from "../audio/audio.js";
 import type { WheelState } from "../state/types.js";
 
 const GAME_COLOR: Record<MinigameType, string> = {
@@ -60,8 +61,14 @@ export function Wheel({ wheel }: { wheel: WheelState }) {
     const jitter = (Math.random() - 0.5) * seg * 0.5;
     const target = 360 * 6 - center - jitter;
     // Delay one tick so the browser paints rotation:0 first, then transitions.
-    const kick = setTimeout(() => setRotation(target), 60);
-    const done = setTimeout(() => setSettled(true), spinMs + 120);
+    const kick = setTimeout(() => {
+      setRotation(target);
+      sfx("spin");
+    }, 60);
+    const done = setTimeout(() => {
+      setSettled(true);
+      sfx("correct");
+    }, spinMs + 120);
     return () => {
       clearTimeout(kick);
       clearTimeout(done);

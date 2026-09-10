@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import type { MinigameResult, ScoreRow, TeamScore } from "@marvinho/shared";
+import { sfx } from "../audio/audio.js";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const HEIGHTS = [132, 102, 80];
@@ -93,6 +95,11 @@ function TeamScoreboard({ result }: { result: MinigameResult }) {
 }
 
 export function Podium({ result }: { result: MinigameResult }) {
+  // Celebratory fanfare when the results reveal.
+  useEffect(() => {
+    sfx("win");
+  }, []);
+
   // Team games get a two-team scoreboard; solo games get the podium.
   if (result.teams && result.teams.length > 0) {
     return <TeamScoreboard result={result} />;

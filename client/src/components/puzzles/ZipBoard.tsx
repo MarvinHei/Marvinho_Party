@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { validateZip, type ZipPuzzle } from "@marvinho/shared";
+import { sfx } from "../../audio/audio.js";
 
 const BOARD_PX = 384;
 
@@ -47,12 +48,17 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
   function extend(target: number) {
     if (disabled) return;
     setPath((prev) => {
-      if (prev.length === 0) return target === startIndex ? [target] : prev;
-      if (target === prev[prev.length - 2]) return prev.slice(0, -1); // backtrack
-      const head = prev[prev.length - 1];
-      if (target === head) return prev;
-      if (!prev.includes(target) && adjacent(head, target, N)) return [...prev, target];
-      return prev;
+      let next = prev;
+      if (prev.length === 0) next = target === startIndex ? [target] : prev;
+      else if (target === prev[prev.length - 2]) next = prev.slice(0, -1); // backtrack
+      else {
+        const head = prev[prev.length - 1];
+        if (target === head) next = prev;
+        else if (!prev.includes(target) && adjacent(head, target, N)) next = [...prev, target];
+      }
+      // Sound only when the path actually changed (avoids drag spam on re-enter).
+      if (next !== prev) sfx("click");
+      return next;
     });
   }
 

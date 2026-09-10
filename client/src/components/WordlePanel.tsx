@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { LetterState } from "@marvinho/shared";
 import { store } from "../state/store.js";
+import { sfx } from "../audio/audio.js";
+import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 
 function Cell({ ch, state }: { ch: string; state?: LetterState }) {
@@ -29,7 +31,9 @@ export function WordlePanel({ seat }: { seat: SeatState }) {
     try {
       const { result, solved } = await net.guess(word);
       store.applyWordleResult(seat.id, result, solved);
+      sfx(solved ? "correct" : "submit");
     } catch (e) {
+      sfx("wrong");
       store.setWordleMessage(seat.id, e instanceof Error ? e.message : "Bad guess");
     }
   }
@@ -43,8 +47,10 @@ export function WordlePanel({ seat }: { seat: SeatState }) {
     if (key === "Enter") {
       if (input.length === cur.wordLength) submit(input);
     } else if (key === "Backspace") {
+      if (input.length) sfx("type");
       store.setWordleInput(seat.id, input.slice(0, -1));
     } else if (/^[a-zA-Z]$/.test(key) && input.length < cur.wordLength) {
+      sfx("type");
       store.setWordleInput(seat.id, input + key.toLowerCase());
     }
   }
@@ -95,10 +101,12 @@ export function WordlePanel({ seat }: { seat: SeatState }) {
   }
 
   const secondsLeft = Math.max(0, Math.ceil((w.endsAt - Date.now()) / 1000));
+  const lowTime = secondsLeft <= 10 && secondsLeft > 0 && !w.finished;
 
   return (
     <div className="wordle">
-      <div className="timer">⏱ {secondsLeft}s</div>
+      <TimerTick seconds={secondsLeft} active={lowTime} />
+      <div className={`timer${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>
       <h2 className="pixel" style={{ fontSize: 16, margin: 0 }}>
         WORDLE RACE
       </h2>

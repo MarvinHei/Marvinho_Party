@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validateTango, type TangoPuzzle } from "@marvinho/shared";
+import { sfx } from "../../audio/audio.js";
 
 const ICON = ["", "☀️", "🌙"]; // index by cell value
 
@@ -23,6 +24,7 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
 
   function cycle(i: number) {
     if (disabled || puzzle.givens[i] !== 0) return;
+    sfx("click");
     setGrid((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
   }
 

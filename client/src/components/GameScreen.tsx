@@ -1,5 +1,7 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { store } from "../state/store.js";
+import { sfx } from "../audio/audio.js";
+import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PhaserBoard } from "../game/PhaserBoard.js";
 import { WordlePanel } from "./WordlePanel.js";
@@ -113,6 +115,8 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     <div className="game-wrap board-stage">
       <PhaserBoard boardLength={lobby.boardLength} players={boardPlayers} meId={seat.playerId} />
 
+      <AudioVisualizer variant="bars" className="board-visualizer" height={52} />
+
       {isFinished && <WinnerOverlay seat={seat} />}
 
       {spinning && seat.wheel && <Wheel wheel={seat.wheel} />}
@@ -133,6 +137,9 @@ export function GameScreen({ seat }: { seat: SeatState }) {
 function WinnerOverlay({ seat }: { seat: SeatState }) {
   const lobby = seat.lobby!;
   const winner = lobby.players.find((p) => p.id === lobby.winnerId);
+  useEffect(() => {
+    sfx("win");
+  }, []);
   return (
     <div className="overlay backdrop">
       <div className="panel win-panel">

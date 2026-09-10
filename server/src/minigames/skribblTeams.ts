@@ -21,7 +21,14 @@ interface PlayerInfo {
 }
 
 function normalize(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
+  // Diacritic-insensitive so German words are forgiving to type (see skribbl.ts).
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }
 
 /** Classic Levenshtein edit distance. */

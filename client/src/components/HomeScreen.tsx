@@ -3,6 +3,7 @@ import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
 import { store, REQUIRED_PLAYERS } from "../state/store.js";
 import { useStore } from "../state/useStore.js";
 import { DEBUG_FEATURE_ENABLED } from "../features.js";
+import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
 
@@ -64,6 +65,7 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
       <div className="panel" style={{ width: 420, maxWidth: "100%" }}>
         <h1 className="title">Marvinho Party</h1>
         <p className="subtitle">Win minigames. Race to the finish.</p>
+        <AudioVisualizer variant="bars" className="home-visualizer" height={44} />
 
         <div className="stack">
           <div>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
+import { sfx } from "../audio/audio.js";
 
 const ICON: Record<MinigameType, string> = {
   wordle: "🔤",
@@ -23,6 +24,15 @@ export function Countdown({ game, endsAt }: { game: MinigameType; endsAt: number
 
   const n = Math.ceil(Math.max(0, endsAt - now) / 1000);
   const label = n > 0 ? String(n) : "GO!";
+
+  // One beep per number, a brighter chime on "GO!".
+  const lastLabel = useRef<string>("");
+  useEffect(() => {
+    if (label !== lastLabel.current) {
+      lastLabel.current = label;
+      sfx(label === "GO!" ? "correct" : "countdown");
+    }
+  }, [label]);
 
   return (
     <div className="overlay backdrop countdown-overlay">

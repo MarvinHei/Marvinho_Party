@@ -13,7 +13,13 @@ interface PlayerInfo {
 }
 
 function normalize(s: string): string {
-  return s.trim().toLowerCase();
+  // Diacritic-insensitive so German words converge regardless of umlaut typing.
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }
 
 /** A submitted word: ≥ minWordLength letters (Latin + German umlauts). */
