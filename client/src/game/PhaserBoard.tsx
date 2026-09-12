@@ -15,13 +15,14 @@ export function PhaserBoard({ boardLength, players, meId }: Props) {
 
   // Create the game once.
   useEffect(() => {
-    if (!hostRef.current) return;
+    const host = hostRef.current;
+    if (!host) return;
     const scene = new BoardScene();
     sceneRef.current = scene;
 
     const game = new Phaser.Game({
       type: Phaser.AUTO,
-      parent: hostRef.current,
+      parent: host,
       backgroundColor: "#12102b",
       scale: {
         mode: Phaser.Scale.RESIZE,
@@ -32,7 +33,23 @@ export function PhaserBoard({ boardLength, players, meId }: Props) {
     });
     gameRef.current = game;
 
+    // Scale.RESIZE only tracks WINDOW resizes, so if the board mounts while its
+    // flex parent is still 0-sized (a layout race), Phaser boots with a 0×0
+    // drawing buffer — a black board + "Framebuffer Incomplete Attachment".
+    // Observe the parent directly and push its real size into Phaser.
+    const applySize = () => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (w > 0 && h > 0 && (game.scale.width !== w || game.scale.height !== h)) {
+        game.scale.resize(w, h);
+      }
+    };
+    game.events.once("ready", applySize);
+    const ro = new ResizeObserver(applySize);
+    ro.observe(host);
+
     return () => {
+      ro.disconnect();
       game.destroy(true);
       gameRef.current = null;
       sceneRef.current = null;
