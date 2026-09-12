@@ -2294,8 +2294,8 @@ input[type="text"]:focus {
   border-radius: 8px;
   box-shadow: 0 4px 0 2px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
-  /* Mounts once with the app → rises in on the same beat as the intro. */
-  animation: introFromBelow 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s both;
+  /* Mounts once with the app → rises in last, finishing as the opening ends. */
+  animation: introFromBelow 2.5s cubic-bezier(0.4, 0.05, 0.2, 1) 4s both;
 }
 .music-btn {
   display: inline-flex;
@@ -2472,6 +2472,9 @@ input[type="text"]:focus {
 .home-stage {
   flex: 1;
   min-height: 0;
+  /* Clip the x-axis so the intro's off-screen slide-in never shows a horizontal
+     scrollbar (overflow-y:auto alone would force overflow-x to auto too). */
+  overflow-x: hidden;
   overflow-y: auto;
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
@@ -2499,20 +2502,25 @@ input[type="text"]:focus {
    and visualizer rise from below once those have landed. Music control (in
    App, mounted once) rises in on the same beat. Respects reduced-motion. */
 @keyframes introFromLeft {
-  from { opacity: 0; transform: translateX(-60px); }
+  from { opacity: 0; transform: translateX(-160px); }
+  60%  { opacity: 1; }
   to   { opacity: 1; transform: translateX(0); }
 }
 @keyframes introFromRight {
-  from { opacity: 0; transform: translateX(60px); }
+  from { opacity: 0; transform: translateX(160px); }
+  60%  { opacity: 1; }
   to   { opacity: 1; transform: translateX(0); }
 }
 @keyframes introFromBelow {
-  from { opacity: 0; transform: translateY(40px); }
+  from { opacity: 0; transform: translateY(90px); }
+  60%  { opacity: 1; }
   to   { opacity: 1; transform: translateY(0); }
 }
-.intro-left  { animation: introFromLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.intro-right { animation: introFromRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.intro-up    { animation: introFromBelow 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s both; }
+/* Timed to unfold across the full length of the ~6.6s opening theme: title/box
+   glide in first, then the description and music control rise in to finish. */
+.intro-left  { animation: introFromLeft 2.8s cubic-bezier(0.4, 0.05, 0.2, 1) 0.2s both; }
+.intro-right { animation: introFromRight 2.8s cubic-bezier(0.4, 0.05, 0.2, 1) 0.5s both; }
+.intro-up    { animation: introFromBelow 2.5s cubic-bezier(0.4, 0.05, 0.2, 1) 3.4s both; }
 @media (prefers-reduced-motion: reduce) {
   .intro-left, .intro-right, .intro-up, .music-control { animation: none; }
 }
