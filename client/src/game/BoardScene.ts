@@ -446,8 +446,9 @@ export class BoardScene extends Phaser.Scene {
       } else if (player.position !== token.lastPosition) {
         // Springy tile-by-tile hop toward the new position (board-game style).
         this.hopForward(token, token.lastPosition, player.position, tx, ty, toNum(player.color));
-      } else {
-        // Same tile, maybe a re-fan after grouping changed.
+      } else if (!token.hopping) {
+        // Same tile, maybe a re-fan after grouping changed. Skip while a hop is
+        // in flight so this tween doesn't fight (and visibly jerk) the hop.
         this.tweens.add({ targets: token.root, x: tx, y: ty, duration: 220, ease: "Sine.easeInOut" });
       }
       token.lastPosition = player.position;
@@ -496,6 +497,10 @@ export class BoardScene extends Phaser.Scene {
     // Keep the whole advance snappy regardless of distance.
     const per = Math.max(150, Math.min(300, Math.round(1500 / n)));
     const hop = token.size * 0.7;
+
+    // Clear any prior movement tween (a re-fan, or an earlier hop still in
+    // flight) so it can't fight this one and jerk the token around.
+    this.tweens.killTweensOf(token.root);
 
     // Pause the idle bob so it doesn't fight the jump on avatar.y.
     if (!token.hopping) {
