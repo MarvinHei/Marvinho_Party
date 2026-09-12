@@ -201,6 +201,20 @@ export function LobbySettingsPanel({ seat, isHost }: { seat: SeatState; isHost: 
                     </div>
                   </div>
                 )}
+
+                {/* Travle: show outlines of not-yet-named countries */}
+                {game === "travle" && (
+                  <label className={`switch-row tight${disabled ? " locked" : ""}`}>
+                    <span>Country outlines</span>
+                    <input
+                      type="checkbox"
+                      className="switch small"
+                      checked={draft.travleOutlines}
+                      disabled={disabled}
+                      onChange={(e) => { sfx("click"); commit({ ...draft, travleOutlines: e.target.checked }); }}
+                    />
+                  </label>
+                )}
               </div>
             </div>
               );

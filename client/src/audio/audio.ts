@@ -254,7 +254,8 @@ class AudioManager {
         this.thud(t);
         break;
       case "lineclear":
-        this.sweep(t, 400, 1100, 0.22, 0.22);
+        // A deeper, muffled block "whump" (duller than the sweep it replaced).
+        this.dullBlock(t);
         break;
       case "correct":
         this.arpeggio(t, [523.25, 659.25, 783.99], 0.09, 0.24);
@@ -337,6 +338,80 @@ class AudioManager {
 
   private arpeggio(t: number, freqs: number[], step: number, peak: number) {
     freqs.forEach((f, i) => this.blip(t + i * step, f, step + 0.08, "triangle", peak));
+  }
+
+  /** A deep, muffled block "whump" for Tetris line clears. */
+  private dullBlock(t: number) {
+    const ctx = this.ctx!;
+    // Low, quick pitch drop with plenty of body.
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(48, t + 0.2);
+    this.env(g, t, 0.24, 0.42);
+    osc.connect(g).connect(this.sfxGain!);
+    osc.start(t);
+    osc.stop(t + 0.26);
+    // Muffled noise body (heavy low-pass) — no bright click.
+    if (this.noiseBuffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const ng = ctx.createGain();
+      const filt = ctx.createBiquadFilter();
+      filt.type = "lowpass";
+      filt.frequency.value = 300;
+      this.env(ng, t, 0.16, 0.22);
+      src.connect(filt).connect(ng).connect(this.sfxGain!);
+      src.start(t);
+      src.stop(t + 0.18);
+    }
+  }
+
+  /**
+   * A snare-style drum roll for the game wheel: rapid filtered-noise hits that
+   * crescendo, capped by a cymbal-like swell. `durationMs` should roughly match
+   * the spin length.
+   */
+  drumroll(durationMs = 1800) {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxGain || !this.noiseBuffer || this.settings.muted || ctx.state !== "running") return;
+    const t0 = ctx.currentTime;
+    const roll = Math.min(durationMs, 2600) / 1000;
+    const step = 0.045;
+    const n = Math.floor(roll / step);
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * step;
+      const grow = 0.25 + 0.75 * (i / n); // crescendo
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const g = ctx.createGain();
+      const filt = ctx.createBiquadFilter();
+      filt.type = "bandpass";
+      filt.frequency.value = 1900;
+      filt.Q.value = 0.8;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.14 * grow, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.9);
+      src.connect(filt).connect(g).connect(this.sfxGain);
+      src.start(t);
+      src.stop(t + step);
+    }
+    // Cymbal swell to finish.
+    const end = t0 + roll;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const g = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 6000;
+    g.gain.setValueAtTime(0.0001, end);
+    g.gain.exponentialRampToValueAtTime(0.2, end + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.5);
+    src.connect(hp).connect(g).connect(this.sfxGain);
+    src.start(end);
+    src.stop(end + 0.55);
   }
 }
 

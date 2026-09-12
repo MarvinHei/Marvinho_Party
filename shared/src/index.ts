@@ -229,6 +229,8 @@ export interface LobbySettings {
   tetrisRows: number;
   /** Codenames grid is codenamesSize × codenamesSize. */
   codenamesSize: CodenamesSize;
+  /** Travle: show the outlines of not-yet-named countries on the globe. */
+  travleOutlines: boolean;
 }
 
 /** Default round length per game (seconds), used to seed settings. */
@@ -282,6 +284,7 @@ export function defaultLobbySettings(): LobbySettings {
     puzzleDifficulty: { zip: "medium", queens: "medium", sudoku: "medium", tango: "medium" },
     tetrisRows: TETRIS_CONFIG.rows,
     codenamesSize: 5,
+    travleOutlines: true,
   };
 }
 
@@ -332,6 +335,7 @@ export function sanitizeSettings(raw: unknown): LobbySettings {
     Math.max(TETRIS_ROWS_MIN, Math.min(TETRIS_ROWS_MAX, Number(r.tetrisRows ?? TETRIS_CONFIG.rows))),
   );
   out.codenamesSize = r.codenamesSize === 3 || r.codenamesSize === 4 ? r.codenamesSize : 5;
+  out.travleOutlines = r.travleOutlines !== false;
   return out;
 }
 

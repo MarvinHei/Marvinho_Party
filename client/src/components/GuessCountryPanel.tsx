@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { countryNames } from "@marvinho/shared";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
@@ -8,7 +8,9 @@ import { silhouettePath, directionIcon } from "../game/geoProject.js";
 
 const NAMES = countryNames()
   .map((c) => c.name)
-  .sort((a, b) => a.localeCompare(b));
+  .sort((a, b) => a.localeCompare(b, "de"));
+
+const SIZE = 1000;
 
 export function GuessCountryPanel({ seat }: { seat: SeatState }) {
   const g = seat.guessCountry;
@@ -20,8 +22,10 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
     return () => clearInterval(i);
   }, []);
 
-  const path = useMemo(() => (g ? silhouettePath(g.geometry, 360, 300, 14) : ""), [g?.geometry]);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const path = useMemo(
+    () => (g ? silhouettePath(g.geometry, SIZE, SIZE, 60) : ""),
+    [g?.geometry],
+  );
 
   if (!g) return null;
 
@@ -48,72 +52,71 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
   }
 
   return (
-    <div className="puzzle-wrap geo-wrap">
-      {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
-      <div className="puzzle-top">
-        <div className="puzzle-name pixel">🌍 Guess the Country</div>
-        {timed && <div className={`puzzle-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>}
+    <div className="geo-stage">
+      <div className="geo-topbar">
+        <div className="geo-title pixel">🌍 Welches Land ist das?</div>
+        {timed && (
+          <div className={`geo-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>
+        )}
+        {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
       </div>
 
-      <div className="puzzle-body">
-        <div className="puzzle-board-col">
-          <div className="geo-silhouette">
-            <svg viewBox="0 0 360 300" width="360" height="300" aria-label="Country silhouette">
-              <path d={path} className="geo-shape" />
-            </svg>
-            {g.solved && (
-              <div className="puzzle-solved">Solved! 🎉<span>waiting for others…</span></div>
-            )}
-          </div>
+      <div className="geo-main">
+        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet" className="geo-silhouette-svg">
+          <path d={path} className="geo-shape" />
+        </svg>
+        {g.solved && <div className="geo-solved-badge">Gelöst! 🎉</div>}
 
-          {!done && (
-            <div className="geo-guess-row">
-              <input
-                ref={inputRef}
-                list="country-list"
-                value={input}
-                placeholder="Name the country…"
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-              <datalist id="country-list">
-                {NAMES.map((n) => (
-                  <option key={n} value={n} />
-                ))}
-              </datalist>
-              <button className="btn pink" onClick={submit}>Guess</button>
-            </div>
-          )}
-          {!done && <div className="geo-tries pixel">{triesLeft} guesses left</div>}
-          {done && !g.solved && <div className="banner">Out of guesses — hang tight…</div>}
-          <div className="error" style={{ minHeight: 18 }}>{msg}</div>
-
-          <div className="geo-history">
-            {g.guesses.map((gu, i) => (
-              <div key={i} className={`geo-guess${gu.correct ? " correct" : ""}`}>
-                <span className="geo-guess-name">{gu.name}</span>
-                {!gu.correct && (
-                  <>
-                    <span className="geo-dist">{gu.distanceKm.toLocaleString()} km</span>
-                    <span className="geo-dir" aria-hidden>{directionIcon(gu.bearingDeg)}</span>
-                    <span className="geo-warm">
-                      <span className="geo-warm-fill" style={{ width: `${Math.round(gu.proximity * 100)}%` }} />
-                    </span>
-                  </>
-                )}
-                {gu.correct && <span className="geo-correct-tag">✓ correct</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="puzzle-standings">
-          <div className="p-standings-title pixel">Standings</div>
+        <div className="geo-standings-float">
           {seat.geoStandings.map((s) => (
             <div key={s.playerId} className={`p-standing${s.solved ? " solved" : ""}`}>
               <span className="swatch" style={{ background: s.color }} />
               <span className="sk-nick">{s.nickname}</span>
               <span className="p-rank">{s.solved ? `#${(s.rank ?? 0) + 1}` : `${s.tries}·`}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="geo-bottombar">
+        {!done ? (
+          <>
+            <div className="geo-guess-row">
+              <input
+                list="country-list"
+                value={input}
+                placeholder="Land benennen…"
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+              />
+              <datalist id="country-list">
+                {NAMES.map((nm) => (
+                  <option key={nm} value={nm} />
+                ))}
+              </datalist>
+              <button className="btn pink" onClick={submit}>Raten</button>
+            </div>
+            <div className="geo-tries pixel">{triesLeft} Versuche übrig</div>
+          </>
+        ) : (
+          !g.solved && <div className="banner">Keine Versuche mehr — warte kurz…</div>
+        )}
+        <div className="error" style={{ minHeight: 16 }}>{msg}</div>
+
+        <div className="geo-history">
+          {g.guesses.map((gu, i) => (
+            <div key={i} className={`geo-guess${gu.correct ? " correct" : ""}`}>
+              <span className="geo-guess-name">{gu.name}</span>
+              {!gu.correct && (
+                <>
+                  <span className="geo-dist">{gu.distanceKm.toLocaleString("de-DE")} km</span>
+                  <span className="geo-dir" aria-hidden>{directionIcon(gu.bearingDeg)}</span>
+                  <span className="geo-warm">
+                    <span className="geo-warm-fill" style={{ width: `${Math.round(gu.proximity * 100)}%` }} />
+                  </span>
+                </>
+              )}
+              {gu.correct && <span className="geo-correct-tag">✓ richtig</span>}
             </div>
           ))}
         </div>

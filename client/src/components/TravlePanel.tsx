@@ -1,35 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { WORLD_GEOMETRY, countryByCode, countryNames } from "@marvinho/shared";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
-import { orthographic, orthoPath, projectCentroid } from "../game/geoProject.js";
+import { orthographic, orthoPath } from "../game/geoProject.js";
 
 const NAMES = countryNames()
   .map((c) => c.name)
-  .sort((a, b) => a.localeCompare(b));
+  .sort((a, b) => a.localeCompare(b, "de"));
 
-const SIZE = 420;
-const R = 198;
+const SIZE = 1000;
+const C = SIZE / 2;
+const R = 460;
 
 export function TravlePanel({ seat }: { seat: SeatState }) {
   const t = seat.travle;
   const [input, setInput] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
   const [, setTick] = useState(0);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 500);
     return () => clearInterval(i);
   }, []);
 
-  // The globe is centered between the two endpoints and fixed for the round.
+  const outlinesOn = seat.lobby?.settings.travleOutlines ?? true;
+
+  // Projection + all-country paths are fixed for the round (memoized).
   const base = useMemo(() => {
     if (!t) return null;
     const a = countryByCode(t.startCode);
     const b = countryByCode(t.endCode);
     if (!a || !b) return null;
-    const o = orthographic((a.lng + b.lng) / 2, (a.lat + b.lat) / 2, R, SIZE / 2, SIZE / 2);
+    const o = orthographic((a.lng + b.lng) / 2, (a.lat + b.lat) / 2, R, C, C);
     const paths: { code: string; d: string }[] = [];
     for (const [code, geo] of Object.entries(WORLD_GEOMETRY)) {
       const d = orthoPath(geo, o);
@@ -39,6 +44,38 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t?.startCode, t?.endCode]);
 
+  // Faint base outlines never change → memoize the elements so guesses/zoom
+  // don't re-render 170+ detailed paths.
+  const outlineEls = useMemo(
+    () => (base ? base.paths.map((p) => <path key={p.code} d={p.d} className="c-land" />) : null),
+    [base],
+  );
+
+  // Scroll-to-zoom (toward the cursor). Non-passive so we can preventDefault.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const m = svg.getScreenCTM();
+      if (!m) return;
+      const loc = pt.matrixTransform(m.inverse());
+      setView((v) => {
+        const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+        const zoom = Math.max(1, Math.min(8, v.zoom * factor));
+        if (zoom === 1) return { zoom: 1, x: 0, y: 0 };
+        const mx = (loc.x - v.x) / v.zoom;
+        const my = (loc.y - v.y) / v.zoom;
+        return { zoom, x: loc.x - zoom * mx, y: loc.y - zoom * my };
+      });
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [base]);
+
   if (!t || !base) return null;
 
   const timed = seat.lobby?.settings.games.travle?.timerEnabled ?? true;
@@ -46,9 +83,15 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   const lowTime = timed && secondsLeft <= 10 && secondsLeft > 0 && !t.connected;
   const namedCodes = new Set(t.named.map((n) => n.code));
   const done = t.connected;
+  const zt = `translate(${view.x} ${view.y}) scale(${view.zoom})`;
 
-  const startLabel = projectCentroid(base.o, base.a.lat, base.a.lng);
-  const endLabel = projectCentroid(base.o, base.b.lat, base.b.lng);
+  // Label screen positions (kept outside the zoom group → constant size).
+  const labelPos = (lat: number, lng: number): [number, number] | null => {
+    const p = base.o.project(lng, lat);
+    return p ? [p[0] * view.zoom + view.x, p[1] * view.zoom + view.y] : null;
+  };
+  const aPos = labelPos(base.a.lat, base.a.lng);
+  const bPos = labelPos(base.b.lat, base.b.lng);
 
   async function submit() {
     const net = store.net(seat.id);
@@ -67,82 +110,102 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   }
 
   return (
-    <div className="puzzle-wrap geo-wrap">
-      {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
-      <div className="puzzle-top">
-        <div className="puzzle-name pixel">🧭 Travle · {base.a.name} → {base.b.name}</div>
-        {timed && <div className={`puzzle-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>}
+    <div className="geo-stage">
+      <div className="geo-topbar">
+        <div className="geo-title pixel">🧭 {base.a.name} → {base.b.name}</div>
+        {timed && (
+          <div className={`geo-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>
+        )}
+        {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
       </div>
 
-      <div className="puzzle-body">
-        <div className="puzzle-board-col">
-          <div className="travle-globe">
-            <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE}>
-              <circle cx={SIZE / 2} cy={SIZE / 2} r={R} className="globe-ocean" />
-              <g className="globe-land">
-                {base.paths.map((p) => {
-                  const isStart = p.code === t.startCode;
-                  const isEnd = p.code === t.endCode;
-                  const isNamed = namedCodes.has(p.code);
-                  const cls = isStart
-                    ? "c-start"
-                    : isEnd
-                      ? "c-end"
-                      : isNamed
-                        ? done
-                          ? "c-linked"
-                          : "c-named"
-                        : "c-land";
-                  return <path key={p.code} d={p.d} className={cls} />;
-                })}
-              </g>
-              {startLabel && (
-                <text x={startLabel[0]} y={startLabel[1]} className="globe-label start">A</text>
-              )}
-              {endLabel && (
-                <text x={endLabel[0]} y={endLabel[1]} className="globe-label end">B</text>
-              )}
-            </svg>
-          </div>
-
-          {done ? (
-            <div className="banner good">Connected {base.a.name} → {base.b.name} with {t.named.length}! 🎉</div>
-          ) : (
-            <div className="geo-guess-row">
-              <input
-                list="travle-country-list"
-                value={input}
-                placeholder="Name a country in between…"
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-              <datalist id="travle-country-list">
-                {NAMES.map((n) => (
-                  <option key={n} value={n} />
+      <div className="geo-main">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="travle-globe-svg"
+        >
+          <defs>
+            <clipPath id="globeClip">
+              <circle cx={C} cy={C} r={R} />
+            </clipPath>
+            <radialGradient id="oceanGrad" cx="50%" cy="38%" r="65%">
+              <stop offset="0%" stopColor="#1e3a6e" />
+              <stop offset="100%" stopColor="#0c1836" />
+            </radialGradient>
+          </defs>
+          <circle cx={C} cy={C} r={R} fill="url(#oceanGrad)" stroke="#3aa0ff" strokeWidth={3} />
+          <g clipPath="url(#globeClip)">
+            <g transform={zt}>
+              {outlinesOn && outlineEls}
+              {/* Named countries (filled) */}
+              {base.paths
+                .filter((p) => namedCodes.has(p.code))
+                .map((p) => (
+                  <path key={p.code} d={p.d} className={done ? "c-linked" : "c-named"} />
                 ))}
-              </datalist>
-              <button className="btn pink" onClick={submit}>Add</button>
-            </div>
-          )}
-          <div className="error" style={{ minHeight: 18 }}>{msg}</div>
+              {/* Endpoints on top */}
+              {base.paths
+                .filter((p) => p.code === t.startCode)
+                .map((p) => (
+                  <path key={p.code} d={p.d} className="c-start" />
+                ))}
+              {base.paths
+                .filter((p) => p.code === t.endCode)
+                .map((p) => (
+                  <path key={p.code} d={p.d} className="c-end" />
+                ))}
+            </g>
+          </g>
+          {/* Constant-size endpoint labels */}
+          {aPos && <text x={aPos[0]} y={aPos[1]} className="globe-label start">A</text>}
+          {bPos && <text x={bPos[0]} y={bPos[1]} className="globe-label end">B</text>}
+        </svg>
 
-          <div className="travle-named">
-            <span className="travle-legend"><i className="c-start" /> {base.a.name}</span>
-            <span className="travle-legend"><i className="c-end" /> {base.b.name}</span>
-            {t.named.map((n) => (
-              <span key={n.code} className="travle-chip">{n.name}</span>
-            ))}
-          </div>
-        </div>
-
-        <div className="puzzle-standings">
-          <div className="p-standings-title pixel">Standings</div>
+        <div className="geo-standings-float">
           {seat.travleStandings.map((s) => (
             <div key={s.playerId} className={`p-standing${s.connected ? " solved" : ""}`}>
               <span className="swatch" style={{ background: s.color }} />
               <span className="sk-nick">{s.nickname}</span>
               <span className="p-rank">{s.connected ? `#${(s.rank ?? 0) + 1}` : `${s.count}`}</span>
             </div>
+          ))}
+        </div>
+        {view.zoom > 1 && (
+          <button className="geo-zoom-reset" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>
+            reset zoom
+          </button>
+        )}
+        <div className="geo-hint">scroll to zoom</div>
+      </div>
+
+      <div className="geo-bottombar">
+        {done ? (
+          <div className="banner good">Connected {base.a.name} → {base.b.name} with {t.named.length}! 🎉</div>
+        ) : (
+          <div className="geo-guess-row">
+            <input
+              list="travle-country-list"
+              value={input}
+              placeholder="Land dazwischen benennen…"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            <datalist id="travle-country-list">
+              {NAMES.map((nm) => (
+                <option key={nm} value={nm} />
+              ))}
+            </datalist>
+            <button className="btn pink" onClick={submit}>Hinzufügen</button>
+          </div>
+        )}
+        <div className="error" style={{ minHeight: 16 }}>{msg}</div>
+        <div className="travle-named">
+          <span className="travle-legend"><i className="c-start" /> {base.a.name}</span>
+          <span className="travle-legend"><i className="c-end" /> {base.b.name}</span>
+          {t.named.map((n) => (
+            <span key={n.code} className="travle-chip">{n.name}</span>
           ))}
         </div>
       </div>

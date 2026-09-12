@@ -1,8 +1,8 @@
 import {
   countryByCode,
-  haversineKm,
   initialBearing,
   matchCountryCode,
+  minBorderDistanceKm,
   type GeoCountry,
   type GuessCountryGuess,
 } from "@marvinho/shared";
@@ -44,9 +44,9 @@ export class GuessCountryRound {
     const guessed = countryByCode(code)!;
     const correct = code === this.answer.code;
     st.tries++;
-    const distanceKm = correct
-      ? 0
-      : haversineKm(guessed.lat, guessed.lng, this.answer.lat, this.answer.lng);
+    // Shortest border-to-border distance (0 for neighbours), with the overall
+    // compass direction from the guess toward the answer.
+    const distanceKm = correct ? 0 : minBorderDistanceKm(code, this.answer.code);
     const bearingDeg = correct
       ? 0
       : initialBearing(guessed.lat, guessed.lng, this.answer.lat, this.answer.lng);

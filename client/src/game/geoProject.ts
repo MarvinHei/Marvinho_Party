@@ -110,11 +110,10 @@ export function projectCentroid(o: Ortho, lat: number, lng: number): [number, nu
 const ARROWS = ["⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️"];
 
 /**
- * Icon for a compass bearing, mirrored east↔west per the game's convention:
- * a LEFT arrow means the answer is to the EAST, a RIGHT arrow means WEST.
+ * Icon for a compass bearing that points toward the answer: east → ➡️ (right),
+ * west → ⬅️ (left), north → ⬆️, etc. One of 8 directions.
  */
 export function directionIcon(bearingDeg: number): string {
-  const flipped = (360 - bearingDeg) % 360;
-  const idx = Math.round(flipped / 45) % 8;
+  const idx = Math.round(bearingDeg / 45) % 8;
   return ARROWS[idx];
 }

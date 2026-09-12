@@ -4,6 +4,7 @@
 // Natural Earth data plus openly-licensed country metadata.
 
 import { GEO_COUNTRIES, type GeoCountry } from "./geoData.js";
+import { WORLD_GEOMETRY, type GeoGeometry } from "./worldGeometry.js";
 
 /** Diacritic-fold + lowercase a name for tolerant matching. */
 export function foldName(s: string): string {
@@ -55,6 +56,52 @@ export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: numb
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
   return Math.round(2 * R_EARTH_KM * Math.asin(Math.min(1, Math.sqrt(s))));
+}
+
+// --- border-to-border distance ---------------------------------------------
+
+/** All boundary points [lng,lat] of a country's outline. */
+function boundaryPoints(code: string): [number, number][] {
+  const geo: GeoGeometry | undefined = WORLD_GEOMETRY[code];
+  if (!geo) return [];
+  const rings = geo.type === "Polygon" ? geo.coordinates : geo.coordinates.flat();
+  const out: [number, number][] = [];
+  for (const ring of rings) for (const p of ring) out.push([p[0], p[1]]);
+  return out;
+}
+
+/** Evenly subsample a point list down to at most `max` points. */
+function subsample(pts: [number, number][], max: number): [number, number][] {
+  if (pts.length <= max) return pts;
+  const step = pts.length / max;
+  const out: [number, number][] = [];
+  for (let i = 0; i < pts.length; i += step) out.push(pts[Math.floor(i)]);
+  return out;
+}
+
+const borderDistCache = new Map<string, number>();
+
+/**
+ * Shortest border-to-border distance (km) between two countries, approximated
+ * from subsampled outline vertices. Adjacent countries return ~0. Cached.
+ */
+export function minBorderDistanceKm(codeA: string, codeB: string): number {
+  if (codeA === codeB) return 0;
+  const key = codeA < codeB ? `${codeA}|${codeB}` : `${codeB}|${codeA}`;
+  const cached = borderDistCache.get(key);
+  if (cached !== undefined) return cached;
+  const a = subsample(boundaryPoints(codeA), 260);
+  const b = subsample(boundaryPoints(codeB), 260);
+  let min = Infinity;
+  for (const [alng, alat] of a) {
+    for (const [blng, blat] of b) {
+      const d = haversineKm(alat, alng, blat, blng);
+      if (d < min) min = d;
+    }
+  }
+  const result = min === Infinity ? 0 : min;
+  borderDistCache.set(key, result);
+  return result;
 }
 
 /** Initial compass bearing (0=N, 90=E, 180=S, 270=W) from A to B. */
