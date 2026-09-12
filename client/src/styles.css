@@ -1313,8 +1313,9 @@ input[type="text"]:focus {
 }
 .skribbl-canvas-frame {
   position: relative;
-  width: 100%;
-  max-width: 720px;
+  /* Grow to fill the column, but cap by available height (4:3) so the whole
+     board stays on-screen without scrolling. */
+  width: min(100%, 860px, calc((100vh - 200px) * 4 / 3));
   aspect-ratio: 4 / 3;
   border: 3px solid var(--border);
   border-radius: 6px;
@@ -1510,6 +1511,9 @@ input[type="text"]:focus {
   gap: 10px;
   padding: 12px 16px;
   align-items: center;
+  /* Square board sized to the smaller of available width/height so it grows on
+     big screens and never overflows on small ones. */
+  --puzzle-size: min(92vw, calc(100vh - 210px), 560px);
 }
 .puzzle-top {
   width: 100%;
@@ -1599,7 +1603,7 @@ input[type="text"]:focus {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  width: min(384px, 92vw);
+  width: var(--puzzle-size);
 }
 .zip-grid {
   display: grid;
@@ -1626,13 +1630,13 @@ input[type="text"]:focus {
 }
 .zip-num {
   font-family: var(--font-pixel);
-  font-size: 14px;
+  font-size: clamp(11px, 2.3vmin, 20px);
   color: var(--ink);
   background: #1c1942;
   border: 2px solid var(--accent);
   border-radius: 50%;
-  width: 30px;
-  height: 30px;
+  width: clamp(22px, 5vmin, 46px);
+  height: clamp(22px, 5vmin, 46px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1658,7 +1662,7 @@ input[type="text"]:focus {
   border: 3px solid #0d0b22;
   border-radius: 4px;
   overflow: hidden;
-  width: min(384px, 92vw);
+  width: var(--puzzle-size);
   aspect-ratio: 1 / 1;
 }
 .queens-cell {
@@ -1667,7 +1671,7 @@ input[type="text"]:focus {
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  font-size: 26px;
+  font-size: clamp(20px, 6vmin, 46px);
 }
 .q-queen {
   color: #0d0b22;
@@ -1705,7 +1709,7 @@ input[type="text"]:focus {
   background: #0e0c24;
   border: 3px solid #0d0b22;
   border-radius: 4px;
-  width: min(384px, 92vw);
+  width: var(--puzzle-size);
   aspect-ratio: 1 / 1;
 }
 .sudoku-cell {
@@ -1714,7 +1718,7 @@ input[type="text"]:focus {
   align-items: center;
   justify-content: center;
   font-family: var(--font-pixel);
-  font-size: clamp(14px, 5vw, 20px);
+  font-size: clamp(14px, 4.4vmin, 30px);
   color: var(--accent);
   cursor: pointer;
   user-select: none;
@@ -1761,7 +1765,7 @@ input[type="text"]:focus {
 /* ---- Tango ---- */
 .tango-board {
   position: relative;
-  width: min(384px, 92vw);
+  width: var(--puzzle-size);
   aspect-ratio: 1 / 1;
 }
 .tango-grid {
@@ -1777,7 +1781,7 @@ input[type="text"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30px;
+  font-size: clamp(18px, 5.4vmin, 44px);
   cursor: pointer;
   user-select: none;
   transition: background 0.18s ease, box-shadow 0.18s ease;
@@ -2264,12 +2268,11 @@ input[type="text"]:focus {
   .wordle-cell { width: 44px; height: 44px; font-size: 18px; }
   .standings { width: 100%; max-width: 320px; }
   .puzzle-wrap { padding: 8px; gap: 8px; }
-  .puzzle-standings { width: 100%; max-width: min(384px, 92vw); }
+  .puzzle-standings { width: 100%; max-width: var(--puzzle-size); }
   .tetris-wrap { padding: 8px; gap: 10px; }
   .skribbl-wrap { padding: 8px; }
   .skribbl-side { width: 100%; }
   .findword-wrap { padding: 10px; }
-  .queens-cell { font-size: clamp(18px, 6vw, 26px); }
 }
 
 /* ============================================================================
@@ -2291,6 +2294,8 @@ input[type="text"]:focus {
   border-radius: 8px;
   box-shadow: 0 4px 0 2px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
+  /* Mounts once with the app → rises in on the same beat as the intro. */
+  animation: introFromBelow 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s both;
 }
 .music-btn {
   display: inline-flex;
@@ -2488,26 +2493,29 @@ input[type="text"]:focus {
   margin: 0;
 }
 .home-hero-viz { display: block; width: 100%; max-width: 460px; opacity: 0.92; }
-.home-showcase { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; max-width: 520px; }
-.showcase-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--panel);
-  border: 2px solid var(--border);
-  border-radius: 999px;
-  font-size: 13px;
-  color: var(--ink-dim);
-  transition: transform 0.1s ease, box-shadow 0.15s ease, color 0.15s ease;
+
+/* --- Landing intro choreography ---------------------------------------------
+   Title flies in from the left, the join box from the right; the description
+   and visualizer rise from below once those have landed. Music control (in
+   App, mounted once) rises in on the same beat. Respects reduced-motion. */
+@keyframes introFromLeft {
+  from { opacity: 0; transform: translateX(-60px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-.showcase-chip:hover {
-  transform: translateY(-2px);
-  color: var(--ink);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+@keyframes introFromRight {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-.showcase-emoji { font-size: 16px; }
-.showcase-name { white-space: nowrap; }
+@keyframes introFromBelow {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.intro-left  { animation: introFromLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.intro-right { animation: introFromRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.intro-up    { animation: introFromBelow 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s both; }
+@media (prefers-reduced-motion: reduce) {
+  .intro-left, .intro-right, .intro-up, .music-control { animation: none; }
+}
 
 .home-join { display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
 .home-join-card { width: 100%; }
@@ -2532,7 +2540,6 @@ input[type="text"]:focus {
   .home-title { text-align: center; }
   .home-hero { align-items: center; text-align: center; }
   .home-lede { text-align: center; }
-  .home-showcase { justify-content: center; }
 }
 
 /* ---- Lobby screen ---- */

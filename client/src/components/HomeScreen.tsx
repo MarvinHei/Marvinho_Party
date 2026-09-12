@@ -6,18 +6,11 @@ import { DEBUG_FEATURE_ENABLED } from "../features.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
-import { GAME_ICON } from "./gameInfo.js";
 
 function initialCode(): string {
   const params = new URLSearchParams(window.location.search);
   return (params.get("lobby") ?? "").toUpperCase();
 }
-
-// Order used for the showcase strip.
-const SHOWCASE: MinigameType[] = [
-  "wordle", "tetris", "skribbl", "codenames", "queens",
-  "zip", "sudoku", "tango", "skribblteams", "findword",
-];
 
 export function HomeScreen({ seat }: { seat: SeatState }) {
   const snap = useStore();
@@ -69,27 +62,18 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
 
   return (
     <div className="home-stage">
-      {/* Left: branding + showcase */}
+      {/* Left: branding */}
       <section className="home-hero">
-        <h1 className="title home-title">Marvinho Party</h1>
-        <p className="home-lede">
+        <h1 className="title home-title intro-left">Marvinho Party</h1>
+        <p className="home-lede intro-up">
           A pixel party of quick minigames. Win them, race across the board, and
           be first to the finish.
         </p>
-        <AudioVisualizer variant="bars" className="home-hero-viz" height={56} />
-
-        <div className="home-showcase">
-          {SHOWCASE.map((g) => (
-            <div key={g} className="showcase-chip" title={MINIGAME_NAMES[g]}>
-              <span className="showcase-emoji" aria-hidden>{GAME_ICON[g]}</span>
-              <span className="showcase-name">{MINIGAME_NAMES[g]}</span>
-            </div>
-          ))}
-        </div>
+        <AudioVisualizer variant="bars" className="home-hero-viz intro-up" height={56} />
       </section>
 
       {/* Right: join / create */}
-      <section className="home-join">
+      <section className="home-join intro-right">
         <div className="panel home-join-card">
           <h2 className="pixel" style={{ fontSize: 15, marginTop: 0 }}>Join the party</h2>
 
