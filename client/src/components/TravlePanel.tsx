@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { WORLD_GEOMETRY, countryByCode, countryNames } from "@marvinho/shared";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
@@ -19,30 +19,50 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   const [input, setInput] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
+  // Manual globe rotation (projection center). null = framed on the A↔B midpoint.
+  const [center, setCenter] = useState<{ lng: number; lat: number } | null>(null);
+  const [grabbing, setGrabbing] = useState(false);
   const [, setTick] = useState(0);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; lng: number; lat: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<{ lng: number; lat: number } | null>(null);
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 500);
     return () => clearInterval(i);
   }, []);
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
 
   const outlinesOn = seat.lobby?.settings.travleOutlines ?? true;
 
-  // Projection + all-country paths are fixed for the round (memoized).
-  const base = useMemo(() => {
+  // A fresh round reframes the globe on the new endpoints (drops any rotation).
+  useEffect(() => { setCenter(null); }, [t?.startCode, t?.endCode]);
+
+  // Endpoints are fixed for the round.
+  const ends = useMemo(() => {
     if (!t) return null;
     const a = countryByCode(t.startCode);
     const b = countryByCode(t.endCode);
     if (!a || !b) return null;
-    const o = orthographic((a.lng + b.lng) / 2, (a.lat + b.lat) / 2, R, C, C);
+    return { a, b };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t?.startCode, t?.endCode]);
+
+  // Effective globe center: the user's dragged rotation, else the A↔B midpoint.
+  const cLng = center ? center.lng : ends ? (ends.a.lng + ends.b.lng) / 2 : 0;
+  const cLat = center ? center.lat : ends ? (ends.a.lat + ends.b.lat) / 2 : 0;
+
+  // Projection + all-country paths, recomputed whenever the globe is rotated.
+  const base = useMemo(() => {
+    if (!ends) return null;
+    const o = orthographic(cLng, cLat, R, C, C);
     const paths: { code: string; d: string }[] = [];
     for (const [code, geo] of Object.entries(WORLD_GEOMETRY)) {
       const d = orthoPath(geo, o);
       if (d) paths.push({ code, d });
     }
-    return { o, paths, a, b };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t?.startCode, t?.endCode]);
+    return { o, paths, a: ends.a, b: ends.b };
+  }, [ends, cLng, cLat]);
 
   // Faint base outlines never change → memoize the elements so guesses/zoom
   // don't re-render 170+ detailed paths.
@@ -85,6 +105,44 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   const done = t.connected;
   const zt = `translate(${view.x} ${view.y}) scale(${view.zoom})`;
 
+  // Drag to spin the globe: convert the pointer delta (in screen px → viewBox
+  // units via the CTM) into degrees of rotation, finer as you zoom in. Updates
+  // are coalesced to one re-projection per animation frame so it stays smooth.
+  function rotateFromPointer(clientX: number, clientY: number, st: { x: number; y: number; lng: number; lat: number }) {
+    const m = svgRef.current?.getScreenCTM();
+    const scale = m && m.a ? m.a : 1;
+    const dvx = (clientX - st.x) / scale;
+    const dvy = (clientY - st.y) / scale;
+    const degPerUnit = 180 / (2 * R);
+    const dLng = (-dvx * degPerUnit) / view.zoom;
+    const dLat = (dvy * degPerUnit) / view.zoom;
+    const lat = Math.max(-90, Math.min(90, st.lat + dLat));
+    const lng = (((st.lng + dLng + 180) % 360) + 360) % 360 - 180;
+    return { lng, lat };
+  }
+  function onGlobePointerDown(e: ReactPointerEvent<SVGSVGElement>) {
+    dragRef.current = { x: e.clientX, y: e.clientY, lng: cLng, lat: cLat };
+    setGrabbing(true);
+    try { svgRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  function onGlobePointerMove(e: ReactPointerEvent<SVGSVGElement>) {
+    const st = dragRef.current;
+    if (!st) return;
+    pendingRef.current = rotateFromPointer(e.clientX, e.clientY, st);
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        if (pendingRef.current) setCenter(pendingRef.current);
+      });
+    }
+  }
+  function onGlobePointerUp(e: ReactPointerEvent<SVGSVGElement>) {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setGrabbing(false);
+    try { svgRef.current?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+
   // Label screen positions (kept outside the zoom group → constant size).
   const labelPos = (lat: number, lng: number): [number, number] | null => {
     const p = base.o.project(lng, lat);
@@ -125,6 +183,11 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           preserveAspectRatio="xMidYMid meet"
           className="travle-globe-svg"
+          onPointerDown={onGlobePointerDown}
+          onPointerMove={onGlobePointerMove}
+          onPointerUp={onGlobePointerUp}
+          onPointerCancel={onGlobePointerUp}
+          style={{ cursor: grabbing ? "grabbing" : "grab", touchAction: "none" }}
         >
           <defs>
             <clipPath id="globeClip">
