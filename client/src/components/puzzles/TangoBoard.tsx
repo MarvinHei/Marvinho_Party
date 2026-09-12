@@ -13,8 +13,14 @@ interface Props {
 export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
   const N = puzzle.size;
   const [grid, setGrid] = useState<number[]>(() => puzzle.givens.slice());
+  // Mistakes only glow red once the player has paused (no clicks) for 2s, so
+  // rapid experimenting doesn't flash red on every tap.
+  const [showErrors, setShowErrors] = useState(false);
+  const errTimer = useRef<number | null>(null);
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
+
+  useEffect(() => () => { if (errTimer.current != null) clearTimeout(errTimer.current); }, []);
 
   useEffect(() => {
     if (!disabled && grid.every((v) => v !== 0) && validateTango(puzzle, grid)) {
@@ -26,6 +32,10 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
     if (disabled || puzzle.givens[i] !== 0) return;
     sfx("click");
     setGrid((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
+    // Reset the "settled" timer: hide errors now, reveal them after 2s of calm.
+    setShowErrors(false);
+    if (errTimer.current != null) clearTimeout(errTimer.current);
+    errTimer.current = window.setTimeout(() => setShowErrors(true), 2000);
   }
 
   // --- rule-violation highlighting ---
@@ -79,7 +89,7 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
           return (
             <div
               key={i}
-              className={`tango-cell${given ? " given" : ""}${badCells.has(i) ? " conflict" : ""}${v ? ` v${v}` : ""}`}
+              className={`tango-cell${given ? " given" : ""}${showErrors && badCells.has(i) ? " conflict" : ""}${v ? ` v${v}` : ""}`}
               onClick={() => cycle(i)}
             >
               <span className="tango-icon">{ICON[v]}</span>
@@ -96,7 +106,7 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
           return (
             <div
               key={k}
-              className={`tango-con${badCons.has(k) ? " bad" : ""}`}
+              className={`tango-con${showErrors && badCons.has(k) ? " bad" : ""}`}
               style={{ left: `${x}%`, top: `${y}%` }}
             >
               {con.kind === "eq" ? "=" : "×"}
