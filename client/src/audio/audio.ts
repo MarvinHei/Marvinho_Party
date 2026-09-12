@@ -6,6 +6,8 @@
 // unlock() (wired to the first pointer/key event in App).
 
 const MUSIC_URL = "/audio/music.mp3";
+// One-shot intro played once on the first unlock, then it hands off to the loop.
+const OPENING_URL = "/audio/opening.mp3";
 const LS_KEY = "marvinho.audio";
 
 export type SfxName =
@@ -46,6 +48,7 @@ class AudioManager {
   private sfxGain: GainNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private musicEl: HTMLAudioElement | null = null;
+  private openingEl: HTMLAudioElement | null = null;
   private gameMusicEl: HTMLAudioElement | null = null;
   private gameMusicUrl: string | null = null;
   private noiseBuffer: AudioBuffer | null = null;
@@ -135,6 +138,8 @@ class AudioManager {
 
   private startMusic() {
     if (!this.ctx || !this.musicGain || this.musicEl) return;
+    // Prepare the idle loop, but don't start it yet — the one-shot opening
+    // plays first and hands off to the loop when it ends.
     const el = new Audio(MUSIC_URL);
     el.loop = true;
     el.crossOrigin = "anonymous";
@@ -146,9 +151,32 @@ class AudioManager {
       // Fallback: play the element directly (no visualizer contribution).
     }
     this.musicEl = el;
-    void el.play().catch(() => {
-      /* will retry on next unlock() */
-    });
+
+    // Play the intro once, then transition straight into the background loop.
+    const opening = new Audio(OPENING_URL);
+    opening.crossOrigin = "anonymous";
+    opening.preload = "auto";
+    try {
+      const src = this.ctx.createMediaElementSource(opening);
+      src.connect(this.musicGain);
+    } catch {
+      // Fallback: element plays directly (no visualizer contribution).
+    }
+    this.openingEl = opening;
+    let handedOff = false;
+    const startIdle = () => {
+      if (handedOff) return;
+      handedOff = true;
+      // Only resume the idle loop if a game track hasn't taken over meanwhile.
+      if (!this.gameMusicEl || this.gameMusicEl.paused) {
+        void el.play().catch(() => {
+          /* will retry on next unlock() */
+        });
+      }
+    };
+    opening.addEventListener("ended", startIdle, { once: true });
+    opening.addEventListener("error", startIdle, { once: true });
+    void opening.play().catch(startIdle);
   }
 
   /**
@@ -160,8 +188,9 @@ class AudioManager {
     this.ensureGraph();
     if (!this.ctx || !this.musicGain) return;
     if (this.ctx.state === "suspended") void this.ctx.resume();
-    // Duck the idle loop while the game track plays.
+    // Duck the idle loop (and any still-playing intro) while the game track plays.
     this.musicEl?.pause();
+    this.openingEl?.pause();
     if (this.gameMusicUrl !== url) {
       this.gameMusicEl?.pause();
       const el = new Audio(url);

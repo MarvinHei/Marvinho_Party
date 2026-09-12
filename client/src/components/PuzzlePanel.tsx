@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { MINIGAME_NAMES } from "@marvinho/shared";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { ZipBoard } from "./puzzles/ZipBoard.js";
@@ -16,6 +16,16 @@ export function PuzzlePanel({ seat }: { seat: SeatState }) {
     const i = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(i);
   }, []);
+
+  // Per-game background track: Mini-Sudoku gets its own theme; Zip, Tango and
+  // Queens share the Queens theme. Restores the idle loop when the round ends.
+  const puzzleGame = seat.puzzle?.game;
+  useEffect(() => {
+    if (!puzzleGame) return;
+    const url = puzzleGame === "sudoku" ? "/audio/minisudoku.mp3" : "/audio/queens.mp3";
+    audio.startGameMusic(url);
+    return () => audio.stopGameMusic();
+  }, [puzzleGame]);
 
   if (!p) {
     return (
