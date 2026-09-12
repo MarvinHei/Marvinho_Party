@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TETRIS_CONFIG } from "@marvinho/shared";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 
 const COLS = TETRIS_CONFIG.cols;
@@ -306,6 +306,12 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
   const [pending, setPending] = useState(0);
   const [target, setTarget] = useState<string>("random");
   const garbageProcessed = useRef(0);
+
+  // Swap the idle music for the Tetris track for the duration of the match.
+  useEffect(() => {
+    audio.startGameMusic("/audio/tetris.mp3");
+    return () => audio.stopGameMusic();
+  }, []);
   // On-screen control actions, wired up inside the engine effect below.
   const actionsRef = useRef<{
     left: () => void;

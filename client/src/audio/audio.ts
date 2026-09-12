@@ -46,6 +46,8 @@ class AudioManager {
   private sfxGain: GainNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private musicEl: HTMLAudioElement | null = null;
+  private gameMusicEl: HTMLAudioElement | null = null;
+  private gameMusicUrl: string | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private unlocked = false;
   private settings = loadSettings();
@@ -147,6 +149,62 @@ class AudioManager {
     void el.play().catch(() => {
       /* will retry on next unlock() */
     });
+  }
+
+  /**
+   * Play a game-specific looping track (e.g. Tetris), ducking the idle music
+   * until stopGameMusic() restores it. Routed through the same music gain, so it
+   * respects volume/mute and feeds the visualizer.
+   */
+  startGameMusic(url: string) {
+    this.ensureGraph();
+    if (!this.ctx || !this.musicGain) return;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
+    // Duck the idle loop while the game track plays.
+    this.musicEl?.pause();
+    if (this.gameMusicUrl !== url) {
+      this.gameMusicEl?.pause();
+      const el = new Audio(url);
+      el.loop = true;
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      try {
+        const src = this.ctx.createMediaElementSource(el);
+        src.connect(this.musicGain);
+      } catch {
+        // Fallback: element plays directly (no visualizer contribution).
+      }
+      this.gameMusicEl = el;
+      this.gameMusicUrl = url;
+    }
+    const g = this.gameMusicEl;
+    if (g) {
+      try {
+        g.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      void g.play().catch(() => {
+        /* ignored — likely not unlocked yet */
+      });
+    }
+  }
+
+  /** Stop the game track and resume the idle background loop. */
+  stopGameMusic() {
+    if (this.gameMusicEl) {
+      this.gameMusicEl.pause();
+      try {
+        this.gameMusicEl.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (this.musicEl && this.unlocked) {
+      void this.musicEl.play().catch(() => {
+        /* ignore */
+      });
+    }
   }
 
   // --- settings ----------------------------------------------------------

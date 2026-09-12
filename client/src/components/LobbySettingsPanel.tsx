@@ -18,11 +18,12 @@ import type { SeatState } from "../state/types.js";
 import { GAME_ICON } from "./gameInfo.js";
 import { sfx } from "../audio/audio.js";
 
-// Display order: puzzles, word games, team games, versus, codenames.
+// Display order: puzzles, word games, team games, versus, geography.
 const GAME_ORDER: MinigameType[] = [
   "zip", "queens", "sudoku", "tango",
   "wordle", "skribbl", "skribblteams", "findword",
   "tetris", "codenames",
+  "guesscountry", "travle",
 ];
 
 const isPuzzle = (g: MinigameType): g is PuzzleGame =>
