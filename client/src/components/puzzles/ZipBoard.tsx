@@ -45,14 +45,14 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
     }
   }, [path, disabled, puzzle, N]);
 
-  function extend(target: number) {
+  // A fresh press: tapping an existing track cell rewinds the cursor to there
+  // (so you can reset without tracing back); otherwise it starts/extends.
+  function tapCell(target: number) {
     if (disabled) return;
     setPath((prev) => {
       let next = prev;
       const existing = prev.indexOf(target);
       if (existing >= 0) {
-        // Tapping/entering an already-drawn cell rewinds the cursor to there,
-        // so you can reset without tracing the whole path back by hand.
         next = existing === prev.length - 1 ? prev : prev.slice(0, existing + 1);
       } else if (prev.length === 0) {
         next = target === startIndex ? [target] : prev;
@@ -60,9 +60,21 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
         const head = prev[prev.length - 1];
         if (adjacent(head, target, N)) next = [...prev, target];
       }
-      // Sound only when the path actually changed (avoids drag spam on re-enter).
       if (next !== prev) sfx("click");
       return next;
+    });
+  }
+
+  // While dragging: only extend onto new adjacent cells. Crossing back over the
+  // existing track does NOT rewind — you keep going. (To rewind, lift and tap.)
+  function dragTo(target: number) {
+    if (disabled) return;
+    setPath((prev) => {
+      if (prev.length === 0 || prev.includes(target)) return prev;
+      const head = prev[prev.length - 1];
+      if (!adjacent(head, target, N)) return prev;
+      sfx("click");
+      return [...prev, target];
     });
   }
 
@@ -91,10 +103,10 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
               className={`zip-cell${inPath ? " on" : ""}${i === head ? " head" : ""}`}
               onPointerDown={() => {
                 dragging.current = true;
-                extend(i);
+                tapCell(i);
               }}
               onPointerEnter={() => {
-                if (dragging.current) extend(i);
+                if (dragging.current) dragTo(i);
               }}
             >
               {num !== undefined && <span className="zip-num">{num}</span>}

@@ -423,6 +423,16 @@ export type CodenamesAssignment = Record<
   { spymasterId: string; memberIds: string[] }
 >;
 
+/** One team in a generic team draft (any team game). */
+export interface TeamDraftTeam {
+  id: string;
+  name: string;
+  color: string;
+  memberIds: string[];
+  /** Codenames only: the spymaster of this team. */
+  spymasterId?: string | null;
+}
+
 export interface CodenamesTeamInfo {
   team: CodenamesTeam;
   spymasterId: string | null;
@@ -464,6 +474,8 @@ export interface SkribblSegment {
   y1: number;
   color: string;
   width: number;
+  /** When true, this op is a flood fill starting at (x0,y0) with `color`. */
+  fill?: boolean;
 }
 
 export type SkribblChatKind = "guess" | "system" | "correct";
@@ -825,10 +837,10 @@ export interface ServerToClientEvents {
     spinMs: number;
   }) => void;
 
-  /** Codenames only: the drafted team/role assignment to animate. */
-  "minigame:assign": (payload: {
-    teams: CodenamesAssignment;
-    animMs: number;
+  /** Team games: the drafted teams to animate + confirm before the round. */
+  "minigame:teams": (payload: {
+    game: MinigameType;
+    teams: TeamDraftTeam[];
   }) => void;
 
   /** Countdown before the chosen game begins. */

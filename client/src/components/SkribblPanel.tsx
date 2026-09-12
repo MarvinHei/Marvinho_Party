@@ -12,6 +12,7 @@ export function SkribblPanel({ seat }: { seat: SeatState }) {
   const net = store.net(seat.id);
   const [color, setColor] = useState("#0d0b22");
   const [width, setWidth] = useState(7);
+  const [tool, setTool] = useState<"pen" | "fill">("pen");
   const [guess, setGuess] = useState("");
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [, setTick] = useState(0);
@@ -111,6 +112,7 @@ export function SkribblPanel({ seat }: { seat: SeatState }) {
               drawable={drawable}
               color={color}
               width={width}
+              tool={tool}
               onSegment={onSegment}
             />
             {cv.phase === "turnEnd" && (
@@ -131,6 +133,17 @@ export function SkribblPanel({ seat }: { seat: SeatState }) {
                   aria-label={`color ${c}`}
                 />
               ))}
+              <span className="skribbl-sep" />
+              <button
+                className={`toolbtn${tool === "pen" ? " on" : ""}`}
+                onClick={() => setTool("pen")}
+                title="Pen"
+              >✏️</button>
+              <button
+                className={`toolbtn${tool === "fill" ? " on" : ""}`}
+                onClick={() => setTool("fill")}
+                title="Fill area"
+              >🪣</button>
               <span className="skribbl-sep" />
               {SIZES.map((sz) => (
                 <button

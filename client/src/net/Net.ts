@@ -58,7 +58,8 @@ export class Net {
         lastResult: null,
         standings: [],
         wheel: null,
-        assign: null,
+        teamDraft: null,
+        teamDraftGame: null,
         countdown: null,
         codenames: null,
         skribbl: null,
@@ -84,13 +85,19 @@ export class Net {
         screen: "game",
         minigamePhase: "spinning",
         wheel: { options, chosen, spinMs },
-        assign: null,
+        teamDraft: null,
+        teamDraftGame: null,
         countdown: null,
       });
     });
 
-    this.socket.on("minigame:assign", ({ teams }) => {
-      this.patch({ screen: "game", minigamePhase: "assigning", assign: teams });
+    this.socket.on("minigame:teams", ({ game, teams }) => {
+      this.patch({
+        screen: "game",
+        minigamePhase: "assigning",
+        teamDraft: teams,
+        teamDraftGame: game,
+      });
     });
 
     this.socket.on("minigame:explain", ({ game }) => {
@@ -114,7 +121,8 @@ export class Net {
         minigamePhase: "playing",
         lastResult: null,
         wheel: null,
-        assign: null,
+        teamDraft: null,
+        teamDraftGame: null,
         countdown: null,
         codenames: null,
         skribbl: null,

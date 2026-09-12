@@ -1383,6 +1383,23 @@ input[type="text"]:focus {
 .skribbl-tools .sizebtn.on {
   border-color: var(--accent);
 }
+.skribbl-tools .toolbtn {
+  width: 30px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: #14122e;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.skribbl-tools .toolbtn.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 210, 63, 0.6);
+}
 .skribbl-tools .sizebtn span {
   background: var(--ink);
   border-radius: 50%;

@@ -13,7 +13,7 @@ import { TetrisPanel } from "./TetrisPanel.js";
 import { PuzzlePanel } from "./PuzzlePanel.js";
 import { GuessCountryPanel } from "./GuessCountryPanel.js";
 import { TravlePanel } from "./TravlePanel.js";
-import { CodenamesAssign } from "./CodenamesAssign.js";
+import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
 import { SandboxMenu } from "./SandboxMenu.js";
@@ -112,7 +112,9 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   if (lobby.sandbox) {
     return (
       <div className="game-wrap board-stage">
-        {seat.minigamePhase === "assigning" && seat.assign && <CodenamesAssign seat={seat} />}
+        {seat.minigamePhase === "assigning" && seat.teamDraft && seat.teamDraftGame && (
+          <TeamDraftScreen seat={seat} teams={seat.teamDraft} game={seat.teamDraftGame} />
+        )}
         {seat.minigamePhase === "countdown" && seat.countdown && (
           <Countdown game={seat.countdown.game} endsAt={seat.countdown.endsAt} />
         )}
@@ -132,7 +134,7 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   }));
 
   const spinning = seat.minigamePhase === "spinning" && !!seat.wheel;
-  const assigning = seat.minigamePhase === "assigning" && !!seat.assign;
+  const assigning = seat.minigamePhase === "assigning" && !!seat.teamDraft;
   const explaining = seat.minigamePhase === "explaining" && !!seat.explainGame;
   const countingDown = seat.minigamePhase === "countdown" && !!seat.countdown;
   const showPodium = !isFinished && resultsActive && podiumReady;
@@ -154,7 +156,9 @@ export function GameScreen({ seat }: { seat: SeatState }) {
 
       {spinning && seat.wheel && <Wheel wheel={seat.wheel} />}
 
-      {assigning && <CodenamesAssign seat={seat} />}
+      {assigning && seat.teamDraft && seat.teamDraftGame && (
+        <TeamDraftScreen seat={seat} teams={seat.teamDraft} game={seat.teamDraftGame} />
+      )}
 
       {explaining && seat.explainGame && (
         <ExplanationScreen seat={seat} game={seat.explainGame} />

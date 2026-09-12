@@ -1,5 +1,4 @@
 import type {
-  CodenamesAssignment,
   CodenamesView,
   FindWordView,
   GeoGeometry,
@@ -9,6 +8,7 @@ import type {
   MinigameResult,
   MinigameType,
   PuzzleGame,
+  TeamDraftTeam,
   PuzzleSpec,
   PuzzleStanding,
   SkribblSegment,
@@ -101,7 +101,9 @@ export interface SeatState {
   lastResult: MinigameResult | null;
   wordle: WordleClientState | null;
   wheel: WheelState | null;
-  assign: CodenamesAssignment | null;
+  /** Drafted teams for the current team game (shown for confirmation). */
+  teamDraft: TeamDraftTeam[] | null;
+  teamDraftGame: MinigameType | null;
   countdown: { game: MinigameType; endsAt: number } | null;
   codenames: CodenamesView | null;
   skribbl: SkribblView | null;
@@ -146,7 +148,8 @@ export function initialSeat(id: string, label: string): SeatState {
     lastResult: null,
     wordle: null,
     wheel: null,
-    assign: null,
+    teamDraft: null,
+    teamDraftGame: null,
     countdown: null,
     codenames: null,
     skribbl: null,

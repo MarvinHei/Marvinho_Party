@@ -32,6 +32,7 @@ import {
   type ScoreRow,
   type ServerToClientEvents,
   type SkribblSegment,
+  type TeamDraftTeam,
   type TeamScore,
   type TravleStanding,
   type WordleStanding,
@@ -66,7 +67,6 @@ const teamName = (t: CodenamesTeam) => (t === "a" ? "Red" : "Blue");
 const teamColor = (t: CodenamesTeam) => (t === "a" ? "#e6394b" : "#3aa0ff");
 
 /** Timings for the pre-game sequence (ms). */
-const ASSIGN_MS = 4500;
 const COUNTDOWN_MS = 5000;
 /** How long the results podium shows before returning to the lobby (ms). */
 const RESULTS_MS = 6500;
@@ -104,9 +104,12 @@ export class Lobby {
   private guessCountry: GuessCountryRound | null = null;
   private travle: TravleRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
+  private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
   /** The game awaiting its explanation-screen ready-gate, if any. */
   private explainGame: MinigameType | null = null;
+  /** The team game awaiting its draft-confirmation ready-gate, if any. */
+  private assignGame: MinigameType | null = null;
   private sandbox = false;
   private timers: NodeJS.Timeout[] = [];
   private interval: NodeJS.Timeout | null = null;
@@ -273,7 +276,11 @@ export class Lobby {
   }
 
   setReady(playerId: string, ready: boolean): void {
-    if (this.phase !== "intermission" && this.phase !== "explaining") {
+    if (
+      this.phase !== "intermission" &&
+      this.phase !== "explaining" &&
+      this.phase !== "assigning"
+    ) {
       throw new Error("Not ready-gating right now.");
     }
     const player = this.players.get(playerId);
@@ -285,7 +292,9 @@ export class Lobby {
 
   forceStart(playerId: string): void {
     if (!this.isHost(playerId)) throw new Error("Only the host can start.");
-    if (this.phase === "explaining" && this.explainGame) {
+    if (this.phase === "assigning" && this.assignGame) {
+      this.proceed(this.assignGame);
+    } else if (this.phase === "explaining" && this.explainGame) {
       this.beginCountdown(this.explainGame);
     } else if (this.phase === "intermission") {
       this.spinWheel();
@@ -333,12 +342,12 @@ export class Lobby {
     this.winnerId = null;
     this.clearTimers();
     this.broadcastLobby(); // propagate sandbox flag before the pre-game sequence
-    if (game === "codenames") {
-      if (this.connectedPlayers().length < 4) throw new Error("Codenames needs 4 players.");
-      this.beginAssignment();
-    } else {
-      this.beginCountdown(game);
+    if (game === "codenames" && this.connectedPlayers().length < 4) {
+      throw new Error("Codenames needs 4 players.");
     }
+    // Sandbox/practice skips the team draft + confirm — jump to the countdown
+    // (the start methods build teams on the fly when none were drafted).
+    this.beginCountdown(game);
   }
 
   private maybeStartFromReady(): void {
@@ -348,7 +357,9 @@ export class Lobby {
     const allReady = connected.length >= 1 && connected.every((p) => p.ready);
     if (!allReady) return;
 
-    if (this.phase === "explaining" && this.explainGame) {
+    if (this.phase === "assigning" && this.assignGame) {
+      this.proceed(this.assignGame);
+    } else if (this.phase === "explaining" && this.explainGame) {
       this.beginCountdown(this.explainGame);
     } else if (this.phase === "intermission") {
       this.spinWheel();
@@ -405,8 +416,12 @@ export class Lobby {
   }
 
   private afterSpin(game: MinigameType): void {
-    if (game === "codenames") this.beginAssignment();
-    else this.proceed(game);
+    // Team games draw their teams first (with a confirm gate); others go on.
+    if (game === "codenames" || game === "skribblteams" || game === "findword") {
+      this.beginTeamDraft(game);
+    } else {
+      this.proceed(game);
+    }
   }
 
   /**
@@ -438,18 +453,36 @@ export class Lobby {
     };
   }
 
-  private beginAssignment(): void {
+  /**
+   * Randomly draw the teams for a team game and show the draft, then wait for
+   * everyone to confirm (or the host to force-start) before proceeding.
+   */
+  private beginTeamDraft(game: MinigameType): void {
+    this.assignGame = game;
+    this.pendingAssign = null;
+    this.pendingTeams = null;
+    let teams: TeamDraftTeam[];
+    if (game === "codenames") {
+      const a = this.buildAssignment();
+      this.pendingAssign = a;
+      teams = [
+        { id: "a", name: "Red", color: "#e6394b", memberIds: a.a.memberIds, spymasterId: a.a.spymasterId },
+        { id: "b", name: "Blue", color: "#3aa0ff", memberIds: a.b.memberIds, spymasterId: a.b.spymasterId },
+      ];
+    } else {
+      const built = this.buildTeams();
+      this.pendingTeams = built;
+      teams = built.map((t) => ({ id: t.id, name: t.name, color: t.color, memberIds: t.memberIds }));
+    }
     this.phase = "assigning";
-    this.pendingAssign = this.buildAssignment();
-    this.io.to(this.id).emit("minigame:assign", {
-      teams: this.pendingAssign,
-      animMs: ASSIGN_MS,
-    });
-    this.schedule(() => this.proceed("codenames"), ASSIGN_MS + 200);
+    this.resetReady();
+    this.io.to(this.id).emit("minigame:teams", { game, teams });
+    this.broadcastLobby();
   }
 
   private beginCountdown(game: MinigameType): void {
     this.explainGame = null;
+    this.assignGame = null;
     this.phase = "countdown";
     const endsAt = Date.now() + COUNTDOWN_MS;
     this.io.to(this.id).emit("minigame:countdown", { game, endsAt });
@@ -844,7 +877,8 @@ export class Lobby {
   // --- skribbl teams ------------------------------------------------------
 
   private startSkribblTeams(): void {
-    const teams = this.buildTeams();
+    const teams = this.pendingTeams ?? this.buildTeams();
+    this.pendingTeams = null;
     const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
     this.phase = "minigame";
     this.currentMinigame = "skribblteams";
@@ -949,7 +983,8 @@ export class Lobby {
   // --- find the word ------------------------------------------------------
 
   private startFindword(): void {
-    const teams = this.buildTeams();
+    const teams = this.pendingTeams ?? this.buildTeams();
+    this.pendingTeams = null;
     const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
     this.phase = "minigame";
     this.currentMinigame = "findword";
