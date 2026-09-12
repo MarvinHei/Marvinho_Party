@@ -17,10 +17,12 @@ export function App() {
     store.ensurePrimarySeat();
   }, []);
 
-  // Unlock audio (resume context + start music) on the first user gesture —
-  // browsers block autoplay until then.
+  // Start the music. We try immediately on load (autoplays wherever the browser
+  // allows it), and also on the first user gesture — each unlock() retries, so a
+  // blocked autoplay simply starts on the first click/keypress instead.
   useEffect(() => {
     const unlock = () => audio.unlock();
+    unlock(); // attempt immediate autoplay on page load
     const opts = { passive: true } as const;
     window.addEventListener("pointerdown", unlock, opts);
     window.addEventListener("keydown", unlock, opts);

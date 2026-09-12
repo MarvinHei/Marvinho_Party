@@ -8,6 +8,9 @@
 const MUSIC_URL = "/audio/music.mp3";
 // One-shot intro played once on the first unlock, then it hands off to the loop.
 const OPENING_URL = "/audio/opening.mp3";
+// Hand-off from the intro to the loop: a cymbal crash, then an 8-bit explosion.
+const CYMBAL_URL = "/audio/crash-cymbal.wav";
+const EXPLOSION_URL = "/audio/explosion.mp3";
 const LS_KEY = "marvinho.audio";
 
 export type SfxName =
@@ -50,7 +53,11 @@ class AudioManager {
   private analyserNode: AnalyserNode | null = null;
   private musicEl: HTMLAudioElement | null = null;
   private openingEl: HTMLAudioElement | null = null;
+  private explosionEl: HTMLAudioElement | null = null;
+  private cymbalEl: HTMLAudioElement | null = null;
   private gameMusicEl: HTMLAudioElement | null = null;
+  /** True once music playback has actually begun (survives autoplay blocks). */
+  private started = false;
   private gameMusicUrl: string | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private unlocked = false;
@@ -131,64 +138,142 @@ class AudioManager {
     this.noiseBuffer = noise;
   }
 
-  /** Call from the first user gesture: resume context + start the music loop. */
+  /**
+   * Resume the context and start the music. Called on page load (to autoplay
+   * where the browser allows it) and on every early user gesture, so a blocked
+   * autoplay attempt is simply retried until one succeeds.
+   */
   unlock() {
     this.ensureGraph();
     const ctx = this.ctx;
     if (!ctx) return;
     if (ctx.state === "suspended") void ctx.resume();
+    this.startMusic();
     if (!this.unlocked) {
-      this.startMusic();
       this.unlocked = true;
       this.emit();
     }
   }
 
   private startMusic() {
-    if (!this.ctx || !this.musicGain || this.musicEl) return;
-    // Prepare the idle loop, but don't start it yet — the one-shot opening
-    // plays first and hands off to the loop when it ends.
-    const el = new Audio(MUSIC_URL);
-    el.loop = true;
-    el.crossOrigin = "anonymous";
-    el.preload = "auto";
-    try {
-      const src = this.ctx.createMediaElementSource(el);
-      src.connect(this.musicGain);
-    } catch {
-      // Fallback: play the element directly (no visualizer contribution).
-    }
-    this.musicEl = el;
+    if (!this.ctx || !this.musicGain || this.started) return;
 
-    // Play the intro once, then transition straight into the background loop.
-    const opening = new Audio(OPENING_URL);
-    opening.crossOrigin = "anonymous";
-    opening.preload = "auto";
-    try {
-      const src = this.ctx.createMediaElementSource(opening);
-      src.connect(this.musicGain);
-    } catch {
-      // Fallback: element plays directly (no visualizer contribution).
-    }
-    this.openingEl = opening;
-    this.phase = "opening";
-    this.emit();
-    let handedOff = false;
-    const startIdle = (crash: boolean) => {
-      if (handedOff) return;
-      handedOff = true;
-      this.phase = "background";
-      this.emit();
-      // A crash/explosion marks the hand-off from the intro to the loop.
-      if (crash) this.play("crash");
-      // Only resume the idle loop if a game track hasn't taken over meanwhile.
-      if (!this.gameMusicEl || this.gameMusicEl.paused) {
-        this.playEl(el);
+    // Build the elements + intro→loop hand-off once; play attempts can retry.
+    if (!this.openingEl) {
+      const el = new Audio(MUSIC_URL);
+      el.loop = true;
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      try {
+        this.ctx.createMediaElementSource(el).connect(this.musicGain);
+      } catch {
+        // Fallback: play the element directly (no visualizer contribution).
       }
-    };
-    opening.addEventListener("ended", () => startIdle(true), { once: true });
-    opening.addEventListener("error", () => startIdle(false), { once: true });
-    void opening.play().catch(() => startIdle(false));
+      this.musicEl = el;
+
+      const opening = new Audio(OPENING_URL);
+      opening.crossOrigin = "anonymous";
+      opening.preload = "auto";
+      try {
+        this.ctx.createMediaElementSource(opening).connect(this.musicGain);
+      } catch {
+        // Fallback: element plays directly (no visualizer contribution).
+      }
+      this.openingEl = opening;
+
+      let handedOff = false;
+      const startIdle = (crash: boolean) => {
+        if (handedOff) return;
+        handedOff = true;
+        this.phase = "background";
+        this.emit();
+        const beginLoop = () => {
+          // Only resume the idle loop if a game track hasn't taken over meanwhile.
+          if (!this.gameMusicEl || this.gameMusicEl.paused) this.playEl(el);
+        };
+        if (crash) {
+          // Hand-off: opening → cymbal crash → 8-bit explosion → background loop.
+          this.playCymbal();
+          window.setTimeout(() => {
+            this.playExplosion();
+            beginLoop();
+          }, 260);
+        } else {
+          beginLoop();
+        }
+      };
+      opening.addEventListener("playing", () => {
+        this.started = true;
+        if (this.phase === "pre") {
+          this.phase = "opening";
+          this.emit();
+        }
+      });
+      opening.addEventListener("ended", () => startIdle(true), { once: true });
+      opening.addEventListener("error", () => startIdle(false), { once: true });
+    }
+
+    // (Re)attempt playback. If the browser blocks autoplay it stays un-started
+    // and the next unlock() (e.g. the first click/keypress) tries again.
+    void this.openingEl.play().then(() => { this.started = true; }).catch(() => {
+      /* blocked — retried on the next unlock() */
+    });
+  }
+
+  /** Play the cymbal crash sample (the first hit of the intro hand-off). */
+  private playCymbal() {
+    this.ensureGraph();
+    if (!this.ctx || !this.sfxGain) return;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
+    if (!this.cymbalEl) {
+      const el = new Audio(CYMBAL_URL);
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      try {
+        this.ctx.createMediaElementSource(el).connect(this.sfxGain);
+      } catch {
+        // Fallback: element plays directly (no visualizer contribution).
+      }
+      this.cymbalEl = el;
+    }
+    const el = this.cymbalEl;
+    this.cancelFade(el);
+    el.volume = 0.45; // a touch quieter than the rest of the hand-off
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    void el.play().catch(() => {
+      /* ignore */
+    });
+  }
+
+  /** Play the explosion sample (falls back to a synthesized crash). */
+  private playExplosion() {
+    this.ensureGraph();
+    if (!this.ctx || !this.sfxGain) return;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
+    if (!this.explosionEl) {
+      const el = new Audio(EXPLOSION_URL);
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      try {
+        this.ctx.createMediaElementSource(el).connect(this.sfxGain);
+      } catch {
+        // Fallback: element plays directly (no visualizer contribution).
+      }
+      this.explosionEl = el;
+    }
+    const el = this.explosionEl;
+    this.cancelFade(el);
+    el.volume = 1;
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    void el.play().catch(() => this.play("crash"));
   }
 
   /**
