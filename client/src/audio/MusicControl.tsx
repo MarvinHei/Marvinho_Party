@@ -3,8 +3,9 @@ import { audio } from "./audio.js";
 
 /** Floating mute / music-volume control shown in a screen corner. */
 export function MusicControl() {
-  // Re-render whenever audio settings change.
-  useSyncExternalStore(audio.subscribe, () => audio.muted);
+  // Re-render whenever audio settings change (mute *or* volume — the volume
+  // must be in the snapshot or the controlled slider snaps back to a stale value).
+  useSyncExternalStore(audio.subscribe, () => `${audio.muted}|${audio.musicVolume}`);
   const muted = audio.muted;
 
   return (

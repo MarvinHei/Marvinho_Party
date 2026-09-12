@@ -22,6 +22,7 @@ export type SfxName =
   | "place"       // puzzle "commit" (queen placed / number set)
   | "spin"        // wheel spinning
   | "countdown"   // pre-game countdown beep
+  | "crash"       // explosion between the intro and the background loop
   | "win";        // game / match won
 
 interface Settings {
@@ -53,6 +54,9 @@ class AudioManager {
   private gameMusicUrl: string | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private unlocked = false;
+  // Intro sequence: "pre" before the first unlock, "opening" while the one-shot
+  // intro plays, "background" once it hands off (with a crash) to the loop.
+  private phase: "pre" | "opening" | "background" = "pre";
   private settings = loadSettings();
   private listeners = new Set<() => void>();
 
@@ -76,6 +80,10 @@ class AudioManager {
   }
   get ready(): boolean {
     return this.unlocked;
+  }
+  /** "pre" | "opening" | "background" — drives the landing-page intro. */
+  get introPhase(): "pre" | "opening" | "background" {
+    return this.phase;
   }
 
   private persist() {
@@ -163,20 +171,24 @@ class AudioManager {
       // Fallback: element plays directly (no visualizer contribution).
     }
     this.openingEl = opening;
+    this.phase = "opening";
+    this.emit();
     let handedOff = false;
-    const startIdle = () => {
+    const startIdle = (crash: boolean) => {
       if (handedOff) return;
       handedOff = true;
+      this.phase = "background";
+      this.emit();
+      // A crash/explosion marks the hand-off from the intro to the loop.
+      if (crash) this.play("crash");
       // Only resume the idle loop if a game track hasn't taken over meanwhile.
       if (!this.gameMusicEl || this.gameMusicEl.paused) {
-        void el.play().catch(() => {
-          /* will retry on next unlock() */
-        });
+        this.playEl(el);
       }
     };
-    opening.addEventListener("ended", startIdle, { once: true });
-    opening.addEventListener("error", startIdle, { once: true });
-    void opening.play().catch(startIdle);
+    opening.addEventListener("ended", () => startIdle(true), { once: true });
+    opening.addEventListener("error", () => startIdle(false), { once: true });
+    void opening.play().catch(() => startIdle(false));
   }
 
   /**
@@ -189,10 +201,10 @@ class AudioManager {
     if (!this.ctx || !this.musicGain) return;
     if (this.ctx.state === "suspended") void this.ctx.resume();
     // Duck the idle loop (and any still-playing intro) while the game track plays.
-    this.musicEl?.pause();
-    this.openingEl?.pause();
+    this.fadeOutPause(this.musicEl);
+    this.fadeOutPause(this.openingEl);
     if (this.gameMusicUrl !== url) {
-      this.gameMusicEl?.pause();
+      this.fadeOutPause(this.gameMusicEl);
       const el = new Audio(url);
       el.loop = true;
       el.crossOrigin = "anonymous";
@@ -206,34 +218,64 @@ class AudioManager {
       this.gameMusicEl = el;
       this.gameMusicUrl = url;
     }
-    const g = this.gameMusicEl;
-    if (g) {
-      try {
-        g.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
-      void g.play().catch(() => {
-        /* ignored — likely not unlocked yet */
-      });
+    // Restart the game track from the top at full volume.
+    this.playEl(this.gameMusicEl, true);
+  }
+
+  /** Fade out the game track and resume the idle background loop. */
+  stopGameMusic() {
+    this.fadeOutPause(this.gameMusicEl);
+    if (this.musicEl && this.unlocked) {
+      this.playEl(this.musicEl);
     }
   }
 
-  /** Stop the game track and resume the idle background loop. */
-  stopGameMusic() {
-    if (this.gameMusicEl) {
-      this.gameMusicEl.pause();
+  // --- fade helpers ------------------------------------------------------
+  private fadeTimers = new WeakMap<HTMLAudioElement, number>();
+
+  private cancelFade(el: HTMLAudioElement) {
+    const id = this.fadeTimers.get(el);
+    if (id != null) {
+      clearInterval(id);
+      this.fadeTimers.delete(el);
+    }
+  }
+
+  /** Ramp an element's volume to 0 over `ms`, then pause it and restore volume. */
+  private fadeOutPause(el: HTMLAudioElement | null, ms = 450) {
+    if (!el) return;
+    this.cancelFade(el);
+    if (el.paused) return;
+    const startVol = el.volume;
+    const steps = 15;
+    let i = 0;
+    const id = window.setInterval(() => {
+      i++;
+      el.volume = Math.max(0, startVol * (1 - i / steps));
+      if (i >= steps) {
+        this.cancelFade(el);
+        el.pause();
+        el.volume = startVol; // restore for the next play
+      }
+    }, Math.max(10, ms / steps));
+    this.fadeTimers.set(el, id);
+  }
+
+  /** Play/resume at full element volume, cancelling any in-flight fade. */
+  private playEl(el: HTMLAudioElement | null, resetToStart = false) {
+    if (!el) return;
+    this.cancelFade(el);
+    el.volume = 1;
+    if (resetToStart) {
       try {
-        this.gameMusicEl.currentTime = 0;
+        el.currentTime = 0;
       } catch {
         /* ignore */
       }
     }
-    if (this.musicEl && this.unlocked) {
-      void this.musicEl.play().catch(() => {
-        /* ignore */
-      });
-    }
+    void el.play().catch(() => {
+      /* likely not unlocked yet */
+    });
   }
 
   // --- settings ----------------------------------------------------------
@@ -299,6 +341,9 @@ class AudioManager {
       case "countdown":
         this.blip(t, 660, 0.12, "sine", 0.26);
         break;
+      case "crash":
+        this.explosion(t);
+        break;
       case "win":
         this.arpeggio(t, [523.25, 659.25, 783.99, 1046.5], 0.12, 0.3);
         this.sweep(t + 0.5, 500, 1200, 0.4, 0.18);
@@ -362,6 +407,40 @@ class AudioManager {
       src.connect(filt).connect(ng).connect(this.sfxGain!);
       src.start(t);
       src.stop(t + 0.07);
+    }
+  }
+
+  /** A short explosion: a low boom under a downward-swept noise blast. */
+  private explosion(t: number) {
+    const ctx = this.ctx!;
+    // Low sine boom.
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(34, t + 0.5);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    osc.connect(g).connect(this.sfxGain!);
+    osc.start(t);
+    osc.stop(t + 0.66);
+    // Noise blast with a lowpass sweeping down (the "boom" body).
+    if (this.noiseBuffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const ng = ctx.createGain();
+      const filt = ctx.createBiquadFilter();
+      filt.type = "lowpass";
+      filt.frequency.setValueAtTime(3400, t);
+      filt.frequency.exponentialRampToValueAtTime(280, t + 0.5);
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.5, t + 0.015);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+      src.connect(filt).connect(ng).connect(this.sfxGain!);
+      src.start(t);
+      src.stop(t + 0.6);
     }
   }
 
