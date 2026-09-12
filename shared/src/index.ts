@@ -4,8 +4,12 @@
 // ============================================================================
 
 export * from "./puzzles.js";
+export * from "./geoData.js";
+export * from "./worldGeometry.js";
+export * from "./geo.js";
 import { PUZZLE_ROUND_SECONDS } from "./puzzles.js";
 import type { PuzzleDifficulty, PuzzleGame, PuzzleSpec, PuzzleStanding } from "./puzzles.js";
+import type { GeoGeometry } from "./worldGeometry.js";
 
 // ---------------------------------------------------------------------------
 // Constants / tunables
@@ -179,7 +183,9 @@ export type MinigameType =
   | "zip"
   | "queens"
   | "sudoku"
-  | "tango";
+  | "tango"
+  | "guesscountry"
+  | "travle";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -193,6 +199,8 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   queens: "Queens",
   sudoku: "Mini-Sudoku",
   tango: "Tango",
+  guesscountry: "Guess the Country",
+  travle: "Travle",
 };
 
 // ---------------------------------------------------------------------------
@@ -235,6 +243,8 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   queens: PUZZLE_ROUND_SECONDS.queens,
   sudoku: PUZZLE_ROUND_SECONDS.sudoku,
   tango: PUZZLE_ROUND_SECONDS.tango,
+  guesscountry: 120,
+  travle: 180,
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -244,6 +254,8 @@ export const TIMER_BOUNDS: Partial<Record<MinigameType, { min: number; max: numb
   skribblteams: { min: 30, max: 180, step: 15 },
   findword: { min: 20, max: 120, step: 10 },
   codenames: { min: 60, max: 600, step: 30 },
+  guesscountry: { min: 45, max: 300, step: 15 },
+  travle: { min: 60, max: 420, step: 30 },
 };
 
 /** Selectable Tetris board heights. */
@@ -622,6 +634,48 @@ export interface TetrisInitPayload {
 }
 
 // ---------------------------------------------------------------------------
+// Guess the Country (shape-guessing race)
+// ---------------------------------------------------------------------------
+
+/** One guess in Guess the Country, with the distance/direction hint. */
+export interface GuessCountryGuess {
+  code: string;
+  name: string;
+  correct: boolean;
+  /** Distance in km from the guessed country to the answer (0 when correct). */
+  distanceKm: number;
+  /** True compass bearing (0=N,90=E,…) from the guess toward the answer. */
+  bearingDeg: number;
+  /** Proximity 0..1 (1 = correct) for a warmth bar. */
+  proximity: number;
+}
+
+/** Per-player public standing during a Guess the Country round. */
+export interface GeoStanding {
+  playerId: string;
+  nickname: string;
+  color: string;
+  solved: boolean;
+  tries: number;
+  rank: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Travle (connect two countries by naming the ones in between)
+// ---------------------------------------------------------------------------
+
+/** Per-player public standing during a Travle round. */
+export interface TravleStanding {
+  playerId: string;
+  nickname: string;
+  color: string;
+  connected: boolean;
+  /** How many countries the player has named so far. */
+  count: number;
+  rank: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -735,6 +789,18 @@ export interface ClientToServerEvents {
     payload: { solution: number[] },
     ack: (res: Ack<{ solved: boolean }>) => void,
   ) => void;
+
+  /** Guess the Country — submit a country name. */
+  "guesscountry:guess": (
+    payload: { name: string },
+    ack: (res: Ack<{ guess: GuessCountryGuess }>) => void,
+  ) => void;
+
+  /** Travle — name a country to bridge the start and end. */
+  "travle:guess": (
+    payload: { name: string },
+    ack: (res: Ack<{ code: string; name: string; connected: boolean }>) => void,
+  ) => void;
 }
 
 export interface ServerToClientEvents {
@@ -814,6 +880,24 @@ export interface ServerToClientEvents {
   }) => void;
 
   "puzzle:standings": (standings: PuzzleStanding[]) => void;
+
+  /** Guess the Country — the anonymized silhouette to identify. */
+  "guesscountry:start": (payload: {
+    geometry: GeoGeometry;
+    endsAt: number;
+    roundSeconds: number;
+    maxTries: number;
+  }) => void;
+  "guesscountry:standings": (standings: GeoStanding[]) => void;
+
+  /** Travle — the two countries to connect. */
+  "travle:start": (payload: {
+    startCode: string;
+    endCode: string;
+    endsAt: number;
+    roundSeconds: number;
+  }) => void;
+  "travle:standings": (standings: TravleStanding[]) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;

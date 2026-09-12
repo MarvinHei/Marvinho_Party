@@ -14,6 +14,8 @@ export const REQUIRED_PLAYERS: Record<MinigameType, number> = {
   skribblteams: 4,
   findword: 4,
   codenames: 4,
+  guesscountry: 1,
+  travle: 1,
 };
 
 let seatCounter = 0;
@@ -182,6 +184,40 @@ class GameStore {
   setPuzzleSolved(seatId: string): void {
     this.makePatcher(seatId)((prev) =>
       prev.puzzle ? { puzzle: { ...prev.puzzle, solvedByMe: true } } : {},
+    );
+  }
+
+  addGuessCountryGuess(
+    seatId: string,
+    guess: import("@marvinho/shared").GuessCountryGuess,
+  ): void {
+    this.makePatcher(seatId)((prev) =>
+      prev.guessCountry
+        ? {
+            guessCountry: {
+              ...prev.guessCountry,
+              guesses: [...prev.guessCountry.guesses, guess],
+              solved: prev.guessCountry.solved || guess.correct,
+            },
+          }
+        : {},
+    );
+  }
+
+  addTravleNamed(
+    seatId: string,
+    entry: { code: string; name: string; connected: boolean },
+  ): void {
+    this.makePatcher(seatId)((prev) =>
+      prev.travle
+        ? {
+            travle: {
+              ...prev.travle,
+              named: [...prev.travle.named, entry],
+              connected: prev.travle.connected || entry.connected,
+            },
+          }
+        : {},
     );
   }
 

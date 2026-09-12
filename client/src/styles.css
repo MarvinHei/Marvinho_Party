@@ -2706,3 +2706,115 @@ input[type="text"]:focus {
 @media (prefers-reduced-motion: reduce) {
   .explain-emoji, .explain-card { animation: none !important; }
 }
+
+/* ============================================================================
+   Geography games: Guess the Country + Travle
+   ========================================================================== */
+.geo-wrap { max-width: 820px; }
+.geo-silhouette {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 11, 34, 0.55);
+  border: 3px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+}
+.geo-silhouette svg { display: block; max-width: 100%; height: auto; }
+.geo-shape {
+  fill: var(--good);
+  stroke: #0d0b22;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}
+
+.geo-guess-row { display: flex; gap: 8px; margin-top: 12px; }
+.geo-guess-row input {
+  flex: 1;
+  padding: 10px 12px;
+  font-family: var(--font-read);
+  font-size: 20px;
+}
+.geo-guess-row .btn { padding: 8px 16px; }
+.geo-tries { font-size: 11px; color: var(--ink-dim); margin-top: 6px; text-align: center; }
+
+.geo-history { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.geo-guess {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(13, 11, 34, 0.5);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  animation: draftIn 0.25s ease both;
+}
+.geo-guess.correct { border-color: var(--good); background: rgba(66, 209, 122, 0.16); }
+.geo-guess-name { flex: 1; font-weight: 600; }
+.geo-dist { font-family: var(--font-pixel); font-size: 10px; color: var(--accent); }
+.geo-dir { font-size: 20px; line-height: 1; }
+.geo-correct-tag { color: var(--good); font-family: var(--font-pixel); font-size: 10px; }
+.geo-warm {
+  width: 84px;
+  height: 8px;
+  border-radius: 4px;
+  background: #241f4a;
+  overflow: hidden;
+  flex: none;
+}
+.geo-warm-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3aa0ff, #ffd23f, #e6394b);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* ---- Travle globe ---- */
+.travle-globe {
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #141233, #0b0a1e);
+  border: 3px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+}
+.travle-globe svg { display: block; max-width: 100%; height: auto; }
+.globe-ocean { fill: #172a52; stroke: #3aa0ff; stroke-width: 2; opacity: 0.9; }
+.globe-land path { vector-effect: non-scaling-stroke; }
+.c-land { fill: none; stroke: rgba(180, 200, 255, 0.28); stroke-width: 0.6; }
+.c-start { fill: var(--good); stroke: #0d0b22; stroke-width: 0.8; }
+.c-end { fill: var(--accent); stroke: #0d0b22; stroke-width: 0.8; }
+.c-named { fill: var(--warn); stroke: #0d0b22; stroke-width: 0.8; opacity: 0.9; }
+.c-linked { fill: var(--good); stroke: #0d0b22; stroke-width: 0.8; }
+.globe-label {
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  fill: #fff;
+  stroke: #0d0b22;
+  stroke-width: 3;
+  paint-order: stroke;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.travle-named { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.travle-legend { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-dim); }
+.travle-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.travle-legend i.c-start { background: var(--good); }
+.travle-legend i.c-end { background: var(--accent); }
+.travle-chip {
+  padding: 3px 9px;
+  font-size: 13px;
+  background: var(--bg-2);
+  border: 2px solid var(--warn);
+  border-radius: 999px;
+  color: var(--ink);
+}
+.banner.good { color: var(--good); border-color: var(--good); }
+
+@media (max-width: 720px) {
+  .geo-silhouette svg, .travle-globe svg { width: 100%; }
+}

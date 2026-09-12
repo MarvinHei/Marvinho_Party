@@ -1,19 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
 import { sfx } from "../audio/audio.js";
-
-const ICON: Record<MinigameType, string> = {
-  wordle: "🔤",
-  codenames: "🕵️",
-  skribbl: "🎨",
-  skribblteams: "🖌️",
-  findword: "🧠",
-  tetris: "🟦",
-  zip: "🔢",
-  queens: "👑",
-  sudoku: "🧩",
-  tango: "☀️",
-};
+import { GAME_ICON as ICON } from "./gameInfo.js";
 
 export function Countdown({ game, endsAt }: { game: MinigameType; endsAt: number }) {
   const [now, setNow] = useState(Date.now());

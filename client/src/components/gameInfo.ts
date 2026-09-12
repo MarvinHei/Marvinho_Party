@@ -10,7 +10,9 @@ export const GAME_ICON: Record<MinigameType, string> = {
   zip: "🔢",
   queens: "👑",
   sudoku: "🧩",
-  tango: "☀️",
+  tango: "🪐",
+  guesscountry: "🌍",
+  travle: "🧭",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -24,6 +26,8 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   queens: "#b06bff",
   sudoku: "#28e0d0",
   tango: "#ffd23f",
+  guesscountry: "#42d17a",
+  travle: "#28e0d0",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -114,6 +118,22 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "Each row and column has equal 🪐 and ⭐.",
       "No more than two of the same symbol in a row.",
       "= means neighbors match, × means they differ.",
+    ],
+  },
+  guesscountry: {
+    tagline: "Name the country from its shape.",
+    rules: [
+      "A country's silhouette appears — type its name and guess.",
+      "A wrong guess shows the distance and a direction arrow (a left arrow means the answer lies to the east).",
+      "Identify it in the fewest guesses to win.",
+    ],
+  },
+  travle: {
+    tagline: "Connect two countries across the map.",
+    rules: [
+      "You're given a start (A) and an end (B) country on the globe.",
+      "Name the countries you'd cross to link them by land borders — they can be named in any order.",
+      "Bridge them using the fewest countries to win.",
     ],
   },
 };

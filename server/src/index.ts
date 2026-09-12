@@ -300,6 +300,30 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("guesscountry:guess", ({ name }, ack) => {
+    try {
+      if (!session) throw new Error("Not in a lobby.");
+      const lobby = manager.getLobby(session.lobbyId);
+      if (!lobby) throw new Error("Lobby not found.");
+      const res = lobby.handleGuessCountryGuess(session.playerId, name);
+      ack({ ok: true, data: res });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
+  socket.on("travle:guess", ({ name }, ack) => {
+    try {
+      if (!session) throw new Error("Not in a lobby.");
+      const lobby = manager.getLobby(session.lobbyId);
+      if (!lobby) throw new Error("Lobby not found.");
+      const res = lobby.handleTravleGuess(session.playerId, name);
+      ack({ ok: true, data: res });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
   socket.on("lobby:leave", () => {
     if (session) {
       manager.getLobby(session.lobbyId)?.removePlayer(session.playerId);

@@ -1,32 +1,8 @@
 import { useEffect, useState } from "react";
-import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
+import { MINIGAME_NAMES } from "@marvinho/shared";
 import { sfx } from "../audio/audio.js";
+import { GAME_COLOR, GAME_ICON } from "./gameInfo.js";
 import type { WheelState } from "../state/types.js";
-
-const GAME_COLOR: Record<MinigameType, string> = {
-  wordle: "#42d17a",
-  codenames: "#3aa0ff",
-  skribbl: "#ff6fcf",
-  skribblteams: "#b06bff",
-  findword: "#28e0d0",
-  tetris: "#e6394b",
-  zip: "#ff8c42",
-  queens: "#b06bff",
-  sudoku: "#28e0d0",
-  tango: "#ffd23f",
-};
-const GAME_ICON: Record<MinigameType, string> = {
-  wordle: "🔤",
-  codenames: "🕵️",
-  skribbl: "🎨",
-  skribblteams: "🖌️",
-  findword: "🧠",
-  tetris: "🟦",
-  zip: "🔢",
-  queens: "👑",
-  sudoku: "🧩",
-  tango: "☀️",
-};
 
 const SIZE = 300;
 const R = SIZE / 2 - 8;

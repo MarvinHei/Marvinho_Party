@@ -2,6 +2,9 @@ import type {
   CodenamesAssignment,
   CodenamesView,
   FindWordView,
+  GeoGeometry,
+  GeoStanding,
+  GuessCountryGuess,
   LobbyView,
   MinigameResult,
   MinigameType,
@@ -13,6 +16,7 @@ import type {
   SkribblView,
   TetrisBoardSnapshot,
   TetrisInitPayload,
+  TravleStanding,
   WordleGuessResult,
   WordleStanding,
 } from "@marvinho/shared";
@@ -30,6 +34,24 @@ export interface PuzzleClientState {
   endsAt: number;
   roundSeconds: number;
   solvedByMe: boolean;
+}
+
+export interface GuessCountryClientState {
+  geometry: GeoGeometry;
+  endsAt: number;
+  roundSeconds: number;
+  maxTries: number;
+  guesses: GuessCountryGuess[];
+  solved: boolean;
+}
+
+export interface TravleClientState {
+  startCode: string;
+  endCode: string;
+  endsAt: number;
+  roundSeconds: number;
+  named: { code: string; name: string; connected: boolean }[];
+  connected: boolean;
 }
 
 export type Screen = "home" | "lobby" | "game";
@@ -96,6 +118,10 @@ export interface SeatState {
   tetrisKos: string[];
   puzzle: PuzzleClientState | null;
   puzzleStandings: PuzzleStanding[];
+  guessCountry: GuessCountryClientState | null;
+  geoStandings: GeoStanding[];
+  travle: TravleClientState | null;
+  travleStandings: TravleStanding[];
 }
 
 export interface StoreSnapshot {
@@ -134,5 +160,9 @@ export function initialSeat(id: string, label: string): SeatState {
     tetrisKos: [],
     puzzle: null,
     puzzleStandings: [],
+    guessCountry: null,
+    geoStandings: [],
+    travle: null,
+    travleStandings: [],
   };
 }

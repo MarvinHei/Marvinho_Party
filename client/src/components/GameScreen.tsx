@@ -11,6 +11,8 @@ import { SkribblTeamsPanel } from "./SkribblTeamsPanel.js";
 import { FindWordPanel } from "./FindWordPanel.js";
 import { TetrisPanel } from "./TetrisPanel.js";
 import { PuzzlePanel } from "./PuzzlePanel.js";
+import { GuessCountryPanel } from "./GuessCountryPanel.js";
+import { TravlePanel } from "./TravlePanel.js";
 import { CodenamesAssign } from "./CodenamesAssign.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -81,6 +83,20 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     return (
       <div className="game-wrap">
         <TetrisPanel key={seat.id} seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "guesscountry" && seat.guessCountry) {
+    return (
+      <div className="game-wrap">
+        <GuessCountryPanel seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "travle" && seat.travle) {
+    return (
+      <div className="game-wrap">
+        <TravlePanel seat={seat} />
       </div>
     );
   }

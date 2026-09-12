@@ -72,6 +72,10 @@ export class Net {
         tetrisKos: [],
         puzzle: null,
         puzzleStandings: [],
+        guessCountry: null,
+        geoStandings: [],
+        travle: null,
+        travleStandings: [],
       });
     });
 
@@ -223,6 +227,34 @@ export class Net {
               : prev.puzzle,
         };
       });
+    });
+
+    this.socket.on("guesscountry:start", ({ geometry, endsAt, roundSeconds, maxTries }) => {
+      this.patch({
+        screen: "game",
+        minigame: "guesscountry",
+        minigamePhase: "playing",
+        guessCountry: { geometry, endsAt, roundSeconds, maxTries, guesses: [], solved: false },
+        geoStandings: [],
+      });
+    });
+
+    this.socket.on("guesscountry:standings", (standings) => {
+      this.patch({ geoStandings: standings });
+    });
+
+    this.socket.on("travle:start", ({ startCode, endCode, endsAt, roundSeconds }) => {
+      this.patch({
+        screen: "game",
+        minigame: "travle",
+        minigamePhase: "playing",
+        travle: { startCode, endCode, endsAt, roundSeconds, named: [], connected: false },
+        travleStandings: [],
+      });
+    });
+
+    this.socket.on("travle:standings", (standings) => {
+      this.patch({ travleStandings: standings });
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -399,6 +431,20 @@ export class Net {
   puzzleSubmit(solution: number[]): Promise<{ solved: boolean }> {
     return new Promise((resolve, reject) => {
       this.socket.emit("puzzle:submit", { solution }, (res) => this.ack(res, resolve, reject));
+    });
+  }
+
+  guessCountry(
+    name: string,
+  ): Promise<{ guess: import("@marvinho/shared").GuessCountryGuess }> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("guesscountry:guess", { name }, (res) => this.ack(res, resolve, reject));
+    });
+  }
+
+  travleGuess(name: string): Promise<{ code: string; name: string; connected: boolean }> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("travle:guess", { name }, (res) => this.ack(res, resolve, reject));
     });
   }
 

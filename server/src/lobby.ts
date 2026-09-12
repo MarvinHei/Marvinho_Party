@@ -8,13 +8,19 @@ import {
   TETRIS_CONFIG,
   WHEEL_SPIN_MS,
   WORDLE_CONFIG,
+  GEO_COUNTRIES,
+  WORLD_GEOMETRY,
+  borderableCountries,
   canFormTeams,
+  countryByCode,
   defaultLobbySettings,
   possibleTeamCounts,
   rewardForRank,
+  shortestCountryPath,
   type ClientToServerEvents,
   type CodenamesAssignment,
   type CodenamesTeam,
+  type GeoStanding,
   type LobbyPhase,
   type LobbySettings,
   type LobbyView,
@@ -27,6 +33,7 @@ import {
   type ServerToClientEvents,
   type SkribblSegment,
   type TeamScore,
+  type TravleStanding,
   type WordleStanding,
 } from "@marvinho/shared";
 import { WordleRound } from "./minigames/wordle.js";
@@ -37,6 +44,8 @@ import { FindWordGame } from "./minigames/findword.js";
 import { TetrisMatch } from "./minigames/tetris.js";
 import { PuzzleRound } from "./minigames/puzzleRound.js";
 import { generatePuzzle } from "./minigames/puzzleGen.js";
+import { GuessCountryRound } from "./minigames/guessCountry.js";
+import { TravleRound } from "./minigames/travle.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -92,6 +101,8 @@ export class Lobby {
   private findword: FindWordGame | null = null;
   private tetris: TetrisMatch | null = null;
   private puzzle: PuzzleRound | null = null;
+  private guessCountry: GuessCountryRound | null = null;
+  private travle: TravleRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private settings: LobbySettings = defaultLobbySettings();
   /** The game awaiting its explanation-screen ready-gate, if any. */
@@ -202,6 +213,16 @@ export class Lobby {
         this.puzzle.finishPlayer(playerId);
         this.emitPuzzleStandings();
         if (this.puzzle.isComplete()) this.endPuzzle();
+      }
+      if (this.phase === "minigame" && this.guessCountry) {
+        this.guessCountry.finishPlayer(playerId);
+        this.emitGeoStandings();
+        if (this.guessCountry.isComplete()) this.endGuessCountry();
+      }
+      if (this.phase === "minigame" && this.travle) {
+        this.travle.finishPlayer(playerId);
+        this.emitTravleStandings();
+        if (this.travle.isComplete()) this.endTravle();
       }
     }
 
@@ -337,7 +358,7 @@ export class Lobby {
   // --- wheel --------------------------------------------------------------
 
   private availableGames(): MinigameType[] {
-    const games: MinigameType[] = ["wordle"];
+    const games: MinigameType[] = ["wordle", "guesscountry", "travle"];
     const n = this.connectedPlayers().length;
     // Single-player puzzle races work at any size.
     games.push(...PUZZLE_GAMES);
@@ -438,6 +459,8 @@ export class Lobby {
       else if (game === "skribblteams") this.startSkribblTeams();
       else if (game === "findword") this.startFindword();
       else if (game === "tetris") this.startTetris();
+      else if (game === "guesscountry") this.startGuessCountry();
+      else if (game === "travle") this.startTravle();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -1148,6 +1171,198 @@ export class Lobby {
     });
 
     this.concludeMinigame({ type: this.currentMinigame ?? "wordle", ranking, rewards, scoreboard });
+  }
+
+  // --- guess the country --------------------------------------------------
+
+  private startGuessCountry(): void {
+    const participants = this.connectedPlayers();
+    const answer = GEO_COUNTRIES[Math.floor(Math.random() * GEO_COUNTRIES.length)];
+    this.phase = "minigame";
+    this.currentMinigame = "guesscountry";
+    this.guessCountry = new GuessCountryRound(participants.map((p) => p.id), answer);
+    const seconds = this.roundSecondsFor("guesscountry");
+    const endsAt = Date.now() + seconds * 1000;
+
+    this.io.to(this.id).emit("minigame:start", { type: "guesscountry" });
+    // Send the silhouette geometry only — never the country's code/name.
+    this.io.to(this.id).emit("guesscountry:start", {
+      geometry: WORLD_GEOMETRY[answer.code],
+      endsAt,
+      roundSeconds: seconds,
+      maxTries: 8,
+    });
+    this.emitGeoStandings();
+
+    this.schedule(() => {
+      if (this.guessCountry) {
+        this.guessCountry.finishAll();
+        this.endGuessCountry();
+      }
+    }, seconds * 1000);
+  }
+
+  handleGuessCountryGuess(playerId: string, name: string) {
+    if (this.phase !== "minigame" || !this.guessCountry) throw new Error("No active round.");
+    const res = this.guessCountry.guess(playerId, name);
+    this.emitGeoStandings();
+    if (this.guessCountry.isComplete()) this.endGuessCountry();
+    return res;
+  }
+
+  private emitGeoStandings(): void {
+    if (!this.guessCountry) return;
+    const ranking = this.guessCountry.ranking();
+    const standings: GeoStanding[] = [...this.players.values()].map((p) => {
+      const s = this.guessCountry!.statsFor(p.id);
+      return {
+        playerId: p.id,
+        nickname: p.nickname,
+        color: p.color,
+        solved: s.solved,
+        tries: s.tries,
+        rank: s.solved ? ranking.indexOf(p.id) : null,
+      };
+    });
+    this.io.to(this.id).emit("guesscountry:standings", standings);
+  }
+
+  private endGuessCountry(): void {
+    if (!this.guessCountry) return;
+    const round = this.guessCountry;
+    this.guessCountry = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const reward = rewardForRank(rank);
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      const s = round.statsFor(id);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0 && s.solved,
+        detail: s.solved ? `${s.tries} ${s.tries === 1 ? "try" : "tries"}` : "did not solve",
+      };
+    });
+
+    this.concludeMinigame({
+      type: "guesscountry",
+      ranking,
+      rewards,
+      scoreboard,
+      reveal: round.answer.name,
+    });
+  }
+
+  // --- travle -------------------------------------------------------------
+
+  private pickTravlePair(): { start: string; end: string } {
+    const pool = borderableCountries();
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const start = pool[Math.floor(Math.random() * pool.length)].code;
+      const end = pool[Math.floor(Math.random() * pool.length)].code;
+      if (start === end) continue;
+      const path = shortestCountryPath(start, end);
+      // 4–6 nodes → 2–4 countries to name in between: a good puzzle length.
+      if (path && path.length >= 4 && path.length <= 6) return { start, end };
+    }
+    // Fallback: any connected pair.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const start = pool[Math.floor(Math.random() * pool.length)].code;
+      const end = pool[Math.floor(Math.random() * pool.length)].code;
+      if (start !== end && shortestCountryPath(start, end)) return { start, end };
+    }
+    return { start: "FRA", end: "POL" };
+  }
+
+  private startTravle(): void {
+    const participants = this.connectedPlayers();
+    const { start, end } = this.pickTravlePair();
+    this.phase = "minigame";
+    this.currentMinigame = "travle";
+    this.travle = new TravleRound(participants.map((p) => p.id), start, end);
+    const seconds = this.roundSecondsFor("travle");
+    const endsAt = Date.now() + seconds * 1000;
+
+    this.io.to(this.id).emit("minigame:start", { type: "travle" });
+    this.io.to(this.id).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
+    this.emitTravleStandings();
+
+    this.schedule(() => {
+      if (this.travle) {
+        this.travle.finishAll();
+        this.endTravle();
+      }
+    }, seconds * 1000);
+  }
+
+  handleTravleGuess(playerId: string, name: string) {
+    if (this.phase !== "minigame" || !this.travle) throw new Error("No active round.");
+    const res = this.travle.guess(playerId, name);
+    this.emitTravleStandings();
+    if (this.travle.isComplete()) this.endTravle();
+    return res;
+  }
+
+  private emitTravleStandings(): void {
+    if (!this.travle) return;
+    const ranking = this.travle.ranking();
+    const standings: TravleStanding[] = [...this.players.values()].map((p) => {
+      const s = this.travle!.statsFor(p.id);
+      return {
+        playerId: p.id,
+        nickname: p.nickname,
+        color: p.color,
+        connected: s.connected,
+        count: s.count,
+        rank: s.connected ? ranking.indexOf(p.id) : null,
+      };
+    });
+    this.io.to(this.id).emit("travle:standings", standings);
+  }
+
+  private endTravle(): void {
+    if (!this.travle) return;
+    const round = this.travle;
+    this.travle = null;
+    this.clearTimers();
+
+    const startName = countryByCode(round.startCode)?.name ?? round.startCode;
+    const endName = countryByCode(round.endCode)?.name ?? round.endCode;
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const reward = rewardForRank(rank);
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      const s = round.statsFor(id);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0 && s.connected,
+        detail: s.connected ? `connected with ${s.count}` : `${s.count} named · no link`,
+      };
+    });
+
+    this.concludeMinigame({
+      type: "travle",
+      ranking,
+      rewards,
+      scoreboard,
+      reveal: `${startName} → ${endName}`,
+    });
   }
 
   // --- shared minigame conclusion ----------------------------------------
