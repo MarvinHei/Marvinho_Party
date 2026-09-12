@@ -29,13 +29,17 @@ export function AudioVisualizer({ variant = "bars", className, height = 64, colo
 
     let raf = 0;
     let t0 = performance.now();
+    let lastFrame = 0;
+    const FRAME_MS = 1000 / 30; // cap at ~30fps — this is decorative
     const freq = new Uint8Array(128);
     const time = new Uint8Array(256);
 
     function resize() {
       const parent = canvas!.parentElement;
       const w = parent ? parent.clientWidth : 300;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      // Cap the backing resolution: a full-DPR canvas on a big desktop monitor
+      // is wasteful for a decorative bar strip and hurts frame times.
+      const dpr = Math.min(1.25, window.devicePixelRatio || 1);
       canvas!.width = Math.max(1, Math.floor(w * dpr));
       canvas!.height = Math.max(1, Math.floor(height * dpr));
       canvas!.style.width = "100%";
@@ -47,6 +51,10 @@ export function AudioVisualizer({ variant = "bars", className, height = 64, colo
     if (canvas.parentElement) ro.observe(canvas.parentElement);
 
     function draw(now: number) {
+      raf = requestAnimationFrame(draw);
+      // Throttle to the target frame rate and skip entirely when hidden.
+      if (document.hidden || now - lastFrame < FRAME_MS) return;
+      lastFrame = now;
       const analyser = audio.analyser;
       const w = canvas!.clientWidth || 300;
       const h = height;
@@ -92,7 +100,6 @@ export function AudioVisualizer({ variant = "bars", className, height = 64, colo
         }
         ctx!.stroke();
       }
-      raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
     return () => {

@@ -37,6 +37,52 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
     });
   }
 
+  // Hold left-click and drag to paint X marks across empty cells. Cells that
+  // already hold a queen (or an X) are left untouched.
+  const dragging = useRef(false);
+  const moved = useRef(false);
+  const startCell = useRef<number | null>(null);
+
+  function paintX(i: number) {
+    if (disabled) return;
+    setCells((prev) => {
+      if (prev[i] !== 0) return prev; // ignore queens and existing X
+      sfx("click");
+      return prev.map((v, idx) => (idx === i ? 1 : v));
+    });
+  }
+
+  useEffect(() => {
+    const up = () => {
+      // A press with no drag = a plain click, which cycles the cell.
+      if (dragging.current && !moved.current && startCell.current !== null) {
+        cycle(startCell.current);
+      }
+      dragging.current = false;
+      moved.current = false;
+      startCell.current = null;
+    };
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled]);
+
+  function onCellDown(i: number) {
+    if (disabled) return;
+    dragging.current = true;
+    moved.current = false;
+    startCell.current = i;
+  }
+  function onCellEnter(i: number) {
+    if (!dragging.current) return;
+    if (!moved.current) {
+      // First movement turns the gesture into a paint stroke: paint the origin.
+      moved.current = true;
+      if (startCell.current !== null) paintX(startCell.current);
+    }
+    paintX(i);
+  }
+
   // Queens that clash: share a row, column or region, or touch (incl. diagonally).
   const queens: number[] = [];
   cells.forEach((v, i) => v === 2 && queens.push(i));
@@ -79,8 +125,9 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
         <div
           key={i}
           className={`queens-cell${v === 2 && bad.has(i) ? " conflict" : ""}`}
-          style={{ background: REGION_COLORS[puzzle.regions[i] % REGION_COLORS.length], ...border(i) }}
-          onClick={() => cycle(i)}
+          style={{ background: REGION_COLORS[puzzle.regions[i] % REGION_COLORS.length], ...border(i), touchAction: "none" }}
+          onPointerDown={() => onCellDown(i)}
+          onPointerEnter={() => onCellEnter(i)}
         >
           {v === 2 ? <span className="q-queen">♛</span> : v === 1 ? <span className="q-x">✕</span> : null}
         </div>

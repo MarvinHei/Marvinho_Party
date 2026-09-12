@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { validateTango, type TangoPuzzle } from "@marvinho/shared";
 import { sfx } from "../../audio/audio.js";
 
-const ICON = ["", "☀️", "🌙"]; // index by cell value
+const ICON = ["", "🪐", "⭐"]; // index by cell value (1 = Jupiter, 2 = Star)
 
 interface Props {
   puzzle: TangoPuzzle;
@@ -79,7 +79,7 @@ export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
           return (
             <div
               key={i}
-              className={`tango-cell${given ? " given" : ""}${badCells.has(i) ? " conflict" : ""}`}
+              className={`tango-cell${given ? " given" : ""}${badCells.has(i) ? " conflict" : ""}${v ? ` v${v}` : ""}`}
               onClick={() => cycle(i)}
             >
               <span className="tango-icon">{ICON[v]}</span>

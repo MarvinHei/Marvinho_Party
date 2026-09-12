@@ -54,10 +54,14 @@ body::after {
     to bottom,
     rgba(0, 0, 0, 0) 0px,
     rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.05) 3px
+    rgba(0, 0, 0, 0.06) 3px
   );
   z-index: 9999;
-  mix-blend-mode: multiply;
+  /* A static scanline layer. It is deliberately NOT using mix-blend-mode:
+     a full-viewport blend forces the browser to re-composite the whole screen
+     on every animation frame — fine on a small phone, janky on a big desktop
+     window. Plain alpha lets the browser keep this on its own cached layer. */
+  will-change: transform;
 }
 
 h1,
@@ -536,7 +540,8 @@ input[type="text"]:focus {
   pointer-events: none;
 }
 .overlay .panel,
-.overlay .podium-card {
+.overlay .podium-card,
+.overlay .explain-card {
   pointer-events: auto;
 }
 .backdrop {
@@ -1738,7 +1743,18 @@ input[type="text"]:focus {
   font-size: 30px;
   cursor: pointer;
   user-select: none;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
+/* Colorful symbol tints: Jupiter (warm) vs Star (cool). */
+.tango-cell.v1 {
+  background: radial-gradient(circle at 50% 40%, rgba(255, 140, 66, 0.42), rgba(255, 111, 207, 0.22));
+  box-shadow: inset 0 0 12px rgba(255, 140, 66, 0.35);
+}
+.tango-cell.v2 {
+  background: radial-gradient(circle at 50% 40%, rgba(58, 160, 255, 0.42), rgba(122, 90, 255, 0.24));
+  box-shadow: inset 0 0 12px rgba(58, 160, 255, 0.35);
+}
+.tango-icon { animation: cellPop 0.2s ease; }
 .tango-cell.given {
   background: #1c1942;
   cursor: default;

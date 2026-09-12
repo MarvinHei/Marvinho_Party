@@ -49,12 +49,16 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
     if (disabled) return;
     setPath((prev) => {
       let next = prev;
-      if (prev.length === 0) next = target === startIndex ? [target] : prev;
-      else if (target === prev[prev.length - 2]) next = prev.slice(0, -1); // backtrack
-      else {
+      const existing = prev.indexOf(target);
+      if (existing >= 0) {
+        // Tapping/entering an already-drawn cell rewinds the cursor to there,
+        // so you can reset without tracing the whole path back by hand.
+        next = existing === prev.length - 1 ? prev : prev.slice(0, existing + 1);
+      } else if (prev.length === 0) {
+        next = target === startIndex ? [target] : prev;
+      } else {
         const head = prev[prev.length - 1];
-        if (target === head) next = prev;
-        else if (!prev.includes(target) && adjacent(head, target, N)) next = [...prev, target];
+        if (adjacent(head, target, N)) next = [...prev, target];
       }
       // Sound only when the path actually changed (avoids drag spam on re-enter).
       if (next !== prev) sfx("click");

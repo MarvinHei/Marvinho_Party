@@ -109,9 +109,9 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
     ],
   },
   tango: {
-    tagline: "Balance suns and moons.",
+    tagline: "Balance planets and stars.",
     rules: [
-      "Each row and column has equal ☀️ and 🌙.",
+      "Each row and column has equal 🪐 and ⭐.",
       "No more than two of the same symbol in a row.",
       "= means neighbors match, × means they differ.",
     ],
