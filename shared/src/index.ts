@@ -206,7 +206,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   guesscountry: "Guess the Country",
   travle: "Travle",
   pong: "Pong",
-  verstecken: "Verstecken",
+  verstecken: "Hide n' Seek",
   battle: "Battle Royale",
   runner: "Runner Rush",
 };
