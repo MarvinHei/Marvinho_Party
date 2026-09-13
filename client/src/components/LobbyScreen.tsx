@@ -3,6 +3,7 @@ import { store } from "../state/store.js";
 import type { SeatState } from "../state/types.js";
 import { LobbySettingsPanel } from "./LobbySettingsPanel.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
+import { LobbyBackdrop } from "./LobbyBackdrop.js";
 
 export function LobbyScreen({ seat }: { seat: SeatState }) {
   const [busy, setBusy] = useState(false);
@@ -54,6 +55,8 @@ export function LobbyScreen({ seat }: { seat: SeatState }) {
 
   return (
     <div className="lobby-stage">
+      <LobbyBackdrop />
+
       <header className="lobby-hero">
         <div className="lobby-hero-left">
           <h1 className="title lobby-hero-title">Marvinho Party</h1>

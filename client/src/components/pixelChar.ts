@@ -133,6 +133,52 @@ export function drawToken(
 }
 
 /**
+ * Draws one character eye centered at (cx, cy) with radius `r`. `lookX`/`lookY`
+ * (each ~ -1..1) shift the pupil to gaze in a direction; `blink` (0 open .. 1
+ * shut) closes it. Used big and standalone for the lobby backdrop.
+ */
+export function drawEye(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  lookX: number,
+  lookY: number,
+  blink: number,
+) {
+  if (blink > 0.5) {
+    ctx.strokeStyle = "#c9cee0";
+    ctx.lineWidth = Math.max(3, r * 0.18);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.9, cy);
+    ctx.lineTo(cx + r * 0.9, cy);
+    ctx.stroke();
+    return;
+  }
+  // White.
+  ctx.fillStyle = "#f2f4fa";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, r * 0.06);
+  ctx.strokeStyle = "#0d0b22";
+  ctx.stroke();
+  // Pupil, gazing toward (lookX, lookY).
+  const px = cx + lookX * r * 0.42;
+  const py = cy + lookY * r * 0.42;
+  ctx.fillStyle = "#14122e";
+  ctx.beginPath();
+  ctx.arc(px, py, r * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Glint.
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(px - r * 0.18, py - r * 0.18, r * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
  * Draws a small knife at (cx, cy) whose tip points along `angle`, its base
  * pushed `reach` pixels out from that origin. Used for the seeker in
  * Verstecken (with an extra thrust distance during a stab).
