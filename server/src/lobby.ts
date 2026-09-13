@@ -568,7 +568,8 @@ export class Lobby {
     const scoreboard: ScoreRow[] = [];
     const teamScores: TeamScore[] = [];
     teams.forEach((t, teamRank) => {
-      const reward = Math.max(1, 3 - teamRank);
+      // Top three teams get 3/2/1; any team beyond 3rd place gets 0.
+      const reward = Math.max(0, 3 - teamRank);
       const won = teamRank === 0;
       for (const id of t.memberIds) {
         ranking.push(id);
@@ -763,7 +764,7 @@ export class Lobby {
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
       const isWinner = winners.includes(id);
-      const reward = isWinner ? 3 : 1;
+      const reward = isWinner ? 2 : 0;
       rewards[id] = reward;
       const player = this.players.get(id);
       if (player) {

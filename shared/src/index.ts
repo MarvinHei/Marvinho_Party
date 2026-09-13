@@ -111,8 +111,9 @@ export function canFormTeams(n: number): boolean {
 /** How long the game-selection wheel spins, in milliseconds. */
 export const WHEEL_SPIN_MS = 4000;
 
-/** Tiles awarded by finishing rank (index 0 = 1st place). Extra ranks get 1. */
-export const RANK_REWARDS = [4, 3, 2, 1] as const;
+/** Tiles awarded by finishing rank (index 0 = 1st place). Only the top three
+ *  place; everyone else (4th and beyond, and non-finishers) gets 0. */
+export const RANK_REWARDS = [3, 2, 1] as const;
 
 /** Palette assigned to players in join order (pixel-friendly, high contrast). */
 export const PLAYER_COLORS = [
@@ -1158,7 +1159,7 @@ export interface ServerToClientEvents {
 
 /** Tiles awarded for a given 0-based finishing rank. */
 export function rewardForRank(rank: number): number {
-  return RANK_REWARDS[rank] ?? 1;
+  return RANK_REWARDS[rank] ?? 0;
 }
 
 /** Normalize a user-typed nickname; returns null if invalid. */
