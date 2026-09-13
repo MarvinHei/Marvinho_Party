@@ -1760,6 +1760,47 @@ input[type="text"]:focus {
   color: var(--ink-dim);
   font-size: 8px;
 }
+.puzzle-watching {
+  font-size: 11px;
+  color: #ffd23f;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+/* ---- Spectate bar (watch another player's POV read-only) ---- */
+.spectate-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 420px;
+}
+.spectate-label {
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.spectate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--ink);
+  background: #171433;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.spectate-btn:hover { border-color: #ffd23f; }
+.spectate-btn.on { border-color: #ffd23f; color: #ffd23f; }
+.spectate-btn.stop { color: var(--ink-dim); }
+.spectate-btn .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
 .puzzle-standings {
   width: 200px;
   display: flex;
@@ -3204,6 +3245,17 @@ input[type="text"]:focus {
   border-radius: 999px;
   box-shadow: 0 0 18px rgba(66, 209, 122, 0.7);
   animation: popIn 0.3s ease both;
+}
+.geo-watching {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #ffd23f;
+  background: rgba(13, 11, 34, 0.72);
+  border-radius: 999px;
+  z-index: 2;
 }
 
 .geo-bottombar {

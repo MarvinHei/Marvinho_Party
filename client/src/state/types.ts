@@ -159,6 +159,10 @@ export interface SeatState {
   hide: HideClientState | null;
   battle: BattleClientState | null;
   runner: RunnerClientState | null;
+  /** Which player's POV this seat is watching read-only (null = none). */
+  spectateTarget: string | null;
+  /** Latest streamed snapshot of the watched player. */
+  spectateFrame: { targetId: string; data: string } | null;
 }
 
 export interface StoreSnapshot {
@@ -207,5 +211,7 @@ export function initialSeat(id: string, label: string): SeatState {
     hide: null,
     battle: null,
     runner: null,
+    spectateTarget: null,
+    spectateFrame: null,
   };
 }

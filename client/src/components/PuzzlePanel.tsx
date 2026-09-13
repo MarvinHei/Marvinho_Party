@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MINIGAME_NAMES } from "@marvinho/shared";
 import { store } from "../state/store.js";
 import { sfx, audio } from "../audio/audio.js";
@@ -8,6 +8,7 @@ import { ZipBoard } from "./puzzles/ZipBoard.js";
 import { QueensBoard } from "./puzzles/QueensBoard.js";
 import { SudokuBoard } from "./puzzles/SudokuBoard.js";
 import { TangoBoard } from "./puzzles/TangoBoard.js";
+import { SpectateBar } from "./SpectateBar.js";
 
 export function PuzzlePanel({ seat }: { seat: SeatState }) {
   const p = seat.puzzle;
@@ -52,15 +53,36 @@ export function PuzzlePanel({ seat }: { seat: SeatState }) {
     }
   }
 
+  // While playing, stream our board so others can watch our POV read-only.
+  const lastData = useRef("");
+  function pushView(cells: number[]) {
+    const data = JSON.stringify(cells);
+    if (data === lastData.current) return;
+    lastData.current = data;
+    store.net(seat.id)?.spectatePush(data);
+  }
+
+  // When we're done, we may be watching someone else's board (read-only).
+  const watching = solved ? seat.spectateTarget : null;
+  const spectateView =
+    watching && seat.spectateFrame?.targetId === watching
+      ? (JSON.parse(seat.spectateFrame.data) as number[])
+      : undefined;
+  const watchingName = watching
+    ? seat.puzzleStandings.find((s) => s.playerId === watching)?.nickname ?? "player"
+    : null;
+
+  const spec = p.spec;
+  const boardExtra = spectateView !== undefined ? { view: spectateView } : { onView: pushView };
   const board =
-    p.spec.game === "zip" ? (
-      <ZipBoard puzzle={p.spec.zip} disabled={solved} onSolved={onSolved} />
-    ) : p.spec.game === "queens" ? (
-      <QueensBoard puzzle={p.spec.queens} disabled={solved} onSolved={onSolved} />
-    ) : p.spec.game === "sudoku" ? (
-      <SudokuBoard puzzle={p.spec.sudoku} disabled={solved} onSolved={onSolved} />
+    spec.game === "zip" ? (
+      <ZipBoard puzzle={spec.zip} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    ) : spec.game === "queens" ? (
+      <QueensBoard puzzle={spec.queens} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    ) : spec.game === "sudoku" ? (
+      <SudokuBoard puzzle={spec.sudoku} disabled={solved} onSolved={onSolved} {...boardExtra} />
     ) : (
-      <TangoBoard puzzle={p.spec.tango} disabled={solved} onSolved={onSolved} />
+      <TangoBoard puzzle={spec.tango} disabled={solved} onSolved={onSolved} {...boardExtra} />
     );
 
   const timed = seat.lobby?.settings.games[p.game]?.timerEnabled ?? true;
@@ -76,14 +98,28 @@ export function PuzzlePanel({ seat }: { seat: SeatState }) {
 
       <div className="puzzle-body">
         <div className="puzzle-board-col">
+          {watching && <div className="puzzle-watching pixel">👁 Watching {watchingName}</div>}
           <div className="puzzle-board-frame">
             {board}
-            {solved && (
+            {solved && !watching && (
               <div className="puzzle-solved">
                 Solved! 🎉<span>waiting for others…</span>
               </div>
             )}
+            {watching && spectateView === undefined && (
+              <div className="puzzle-solved">Loading {watchingName}'s board…</div>
+            )}
           </div>
+          {solved && (
+            <SpectateBar
+              seat={seat}
+              people={seat.puzzleStandings.map((s) => ({
+                playerId: s.playerId,
+                nickname: s.nickname,
+                color: s.color,
+              }))}
+            />
+          )}
         </div>
 
         <div className="puzzle-standings">

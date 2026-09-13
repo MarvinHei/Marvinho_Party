@@ -191,6 +191,12 @@ class GameStore {
     );
   }
 
+  /** Start (or stop, with null) watching another player's read-only POV. */
+  setSpectateTarget(seatId: string, targetId: string | null): void {
+    this.net(seatId)?.spectateWatch(targetId);
+    this.makePatcher(seatId)({ spectateTarget: targetId, spectateFrame: null });
+  }
+
   addGuessCountryGuess(
     seatId: string,
     guess: import("@marvinho/shared").GuessCountryGuess,

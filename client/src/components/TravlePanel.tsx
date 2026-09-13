@@ -5,6 +5,9 @@ import { sfx } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { orthographic, orthoPath } from "../game/geoProject.js";
+import { SpectateBar } from "./SpectateBar.js";
+
+type Named = { code: string; name: string; connected: boolean };
 
 const NAMES = countryNames()
   .map((c) => c.name)
@@ -34,6 +37,12 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
 
   const outlinesOn = seat.lobby?.settings.travleOutlines ?? true;
+
+  // Stream our named countries so others can watch our POV read-only.
+  useEffect(() => {
+    if (!t) return;
+    store.net(seat.id)?.spectatePush(JSON.stringify({ named: t.named, connected: t.connected }));
+  }, [seat.id, t?.named, t?.connected]);
 
   // A fresh round reframes the globe on the new endpoints (drops any rotation).
   useEffect(() => { setCenter(null); }, [t?.startCode, t?.endCode]);
@@ -101,8 +110,19 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   const timed = seat.lobby?.settings.games.travle?.timerEnabled ?? true;
   const secondsLeft = Math.max(0, Math.ceil((t.endsAt - Date.now()) / 1000));
   const lowTime = timed && secondsLeft <= 10 && secondsLeft > 0 && !t.connected;
-  const namedCodes = new Set(t.named.map((n) => n.code));
   const done = t.connected;
+  // Once connected, we may be watching another player's route (read-only).
+  const watching = done ? seat.spectateTarget : null;
+  const frame =
+    watching && seat.spectateFrame?.targetId === watching
+      ? (JSON.parse(seat.spectateFrame.data) as { named: Named[]; connected: boolean })
+      : null;
+  const named: Named[] = frame ? frame.named : t.named;
+  const showConnected = frame ? frame.connected : t.connected;
+  const watchingName = watching
+    ? seat.travleStandings.find((s) => s.playerId === watching)?.nickname ?? "player"
+    : null;
+  const namedCodes = new Set(named.map((n) => n.code));
   const zt = `translate(${view.x} ${view.y}) scale(${view.zoom})`;
 
   // Drag to spin the globe: convert the pointer delta (in screen px → viewBox
@@ -206,7 +226,7 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
               {base.paths
                 .filter((p) => namedCodes.has(p.code))
                 .map((p) => (
-                  <path key={p.code} d={p.d} className={done ? "c-linked" : "c-named"} />
+                  <path key={p.code} d={p.d} className={showConnected ? "c-linked" : "c-named"} />
                 ))}
               {/* Endpoints on top */}
               {base.paths
@@ -245,7 +265,11 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
 
       <div className="geo-bottombar">
         {done ? (
-          <div className="banner good">Connected {base.a.name} → {base.b.name} with {t.named.length}! 🎉</div>
+          watching ? (
+            <div className="banner">👁 {watchingName} · {named.length} named{showConnected ? " · connected 🎉" : ""}</div>
+          ) : (
+            <div className="banner good">Connected {base.a.name} → {base.b.name} with {t.named.length}! 🎉</div>
+          )
         ) : (
           <div className="geo-guess-row">
             <input
@@ -263,11 +287,21 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
             <button className="btn pink" onClick={submit}>Hinzufügen</button>
           </div>
         )}
+        {done && (
+          <SpectateBar
+            seat={seat}
+            people={seat.travleStandings.map((s) => ({
+              playerId: s.playerId,
+              nickname: s.nickname,
+              color: s.color,
+            }))}
+          />
+        )}
         <div className="error" style={{ minHeight: 16 }}>{msg}</div>
         <div className="travle-named">
           <span className="travle-legend"><i className="c-start" /> {base.a.name}</span>
           <span className="travle-legend"><i className="c-end" /> {base.b.name}</span>
-          {t.named.map((n) => (
+          {named.map((n) => (
             <span key={n.code} className="travle-chip">{n.name}</span>
           ))}
         </div>

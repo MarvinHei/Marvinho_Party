@@ -13,15 +13,28 @@ interface Props {
   puzzle: ZipPuzzle;
   disabled: boolean;
   onSolved: (solution: number[]) => void;
+  /** Read-only external path to display (spectating another player). */
+  view?: number[];
+  /** Report the local path on change (for spectate streaming). */
+  onView?: (path: number[]) => void;
 }
 
-export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
+export function ZipBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
   const N = puzzle.size;
   const cell = BOARD_PX / N;
-  const [path, setPath] = useState<number[]>([]);
+  const [own, setPath] = useState<number[]>([]);
+  const locked = disabled || view !== undefined;
+  const path = view ?? own;
   const dragging = useRef(false);
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+
+  useEffect(() => {
+    if (view !== undefined) return;
+    onViewRef.current?.(own);
+  }, [own, view]);
 
   const numMap = useMemo(() => {
     const m = new Map<number, number>();
@@ -40,15 +53,15 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!disabled && path.length === N * N && validateZip(puzzle, path)) {
-      onSolvedRef.current(path);
+    if (!locked && own.length === N * N && validateZip(puzzle, own)) {
+      onSolvedRef.current(own);
     }
-  }, [path, disabled, puzzle, N]);
+  }, [own, locked, puzzle, N]);
 
   // A fresh press: tapping an existing track cell rewinds the cursor to there
   // (so you can reset without tracing back); otherwise it starts/extends.
   function tapCell(target: number) {
-    if (disabled) return;
+    if (locked) return;
     setPath((prev) => {
       let next = prev;
       const existing = prev.indexOf(target);
@@ -68,7 +81,7 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
   // While dragging: only extend onto new adjacent cells. Crossing back over the
   // existing track does NOT rewind — you keep going. (To rewind, lift and tap.)
   function dragTo(target: number) {
-    if (disabled) return;
+    if (locked) return;
     setPath((prev) => {
       if (prev.length === 0 || prev.includes(target)) return prev;
       const head = prev[prev.length - 1];
@@ -126,7 +139,7 @@ export function ZipBoard({ puzzle, disabled, onSolved }: Props) {
           />
         )}
       </svg>
-      <button className="mini-btn zip-reset" onClick={() => setPath([])} disabled={disabled}>
+      <button className="mini-btn zip-reset" onClick={() => setPath([])} disabled={locked}>
         Reset
       </button>
     </div>

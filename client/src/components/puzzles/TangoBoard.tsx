@@ -8,28 +8,43 @@ interface Props {
   puzzle: TangoPuzzle;
   disabled: boolean;
   onSolved: (solution: number[]) => void;
+  /** Read-only external state to display (spectating another player). */
+  view?: number[];
+  /** Report the local state on change (for spectate streaming). */
+  onView?: (grid: number[]) => void;
 }
 
-export function TangoBoard({ puzzle, disabled, onSolved }: Props) {
+export function TangoBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
   const N = puzzle.size;
-  const [grid, setGrid] = useState<number[]>(() => puzzle.givens.slice());
+  const [own, setGrid] = useState<number[]>(() => puzzle.givens.slice());
+  const locked = disabled || view !== undefined;
+  const grid = view ?? own;
   // Mistakes only glow red once the player has paused (no clicks) for 2s, so
-  // rapid experimenting doesn't flash red on every tap.
-  const [showErrors, setShowErrors] = useState(false);
+  // rapid experimenting doesn't flash red on every tap. A spectated board just
+  // shows its errors outright.
+  const [showErrorsOwn, setShowErrors] = useState(false);
+  const showErrors = view !== undefined ? true : showErrorsOwn;
   const errTimer = useRef<number | null>(null);
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
 
   useEffect(() => () => { if (errTimer.current != null) clearTimeout(errTimer.current); }, []);
 
   useEffect(() => {
-    if (!disabled && grid.every((v) => v !== 0) && validateTango(puzzle, grid)) {
-      onSolvedRef.current(grid);
+    if (view !== undefined) return;
+    onViewRef.current?.(own);
+  }, [own, view]);
+
+  useEffect(() => {
+    if (!locked && own.every((v) => v !== 0) && validateTango(puzzle, own)) {
+      onSolvedRef.current(own);
     }
-  }, [grid, disabled, puzzle]);
+  }, [own, locked, puzzle]);
 
   function cycle(i: number) {
-    if (disabled || puzzle.givens[i] !== 0) return;
+    if (locked || puzzle.givens[i] !== 0) return;
     sfx("click");
     setGrid((prev) => prev.map((v, idx) => (idx === i ? (v + 1) % 3 : v)));
     // Reset the "settled" timer: hide errors now, reveal them after 2s of calm.

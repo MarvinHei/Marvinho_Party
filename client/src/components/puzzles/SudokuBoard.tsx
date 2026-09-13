@@ -6,23 +6,36 @@ interface Props {
   puzzle: SudokuPuzzle;
   disabled: boolean;
   onSolved: (solution: number[]) => void;
+  /** Read-only external state to display (spectating another player). */
+  view?: number[];
+  /** Report the local state on change (for spectate streaming). */
+  onView?: (grid: number[]) => void;
 }
 
-export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
+export function SudokuBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
   const N = puzzle.size;
-  const [grid, setGrid] = useState<number[]>(() => puzzle.givens.slice());
+  const [own, setGrid] = useState<number[]>(() => puzzle.givens.slice());
   const [sel, setSel] = useState<number | null>(null);
+  const locked = disabled || view !== undefined;
+  const grid = view ?? own;
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
 
   useEffect(() => {
-    if (!disabled && grid.every((v) => v !== 0) && validateSudoku(puzzle, grid)) {
-      onSolvedRef.current(grid);
+    if (view !== undefined) return;
+    onViewRef.current?.(own);
+  }, [own, view]);
+
+  useEffect(() => {
+    if (!locked && own.every((v) => v !== 0) && validateSudoku(puzzle, own)) {
+      onSolvedRef.current(own);
     }
-  }, [grid, disabled, puzzle]);
+  }, [own, locked, puzzle]);
 
   function set(i: number, val: number) {
-    if (disabled || puzzle.givens[i] !== 0) return;
+    if (locked || puzzle.givens[i] !== 0) return;
     sfx(val !== 0 ? "place" : "click");
     setGrid((prev) => prev.map((v, idx) => (idx === i ? val : v)));
   }
@@ -36,7 +49,7 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, disabled]);
+  }, [sel, locked]);
 
   // conflicts: a filled cell duplicated in its row/col/box
   const conflict = (i: number): boolean => {
@@ -81,6 +94,7 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
               key={i}
               className={cls.join(" ")}
               onClick={() => {
+                if (locked) return;
                 if (!given) sfx("click");
                 setSel(i);
               }}
@@ -92,11 +106,11 @@ export function SudokuBoard({ puzzle, disabled, onSolved }: Props) {
       </div>
       <div className="sudoku-pad">
         {[1, 2, 3, 4, 5, 6].map((n) => (
-          <button key={n} className="pad-btn" disabled={disabled} onClick={() => sel !== null && set(sel, n)}>
+          <button key={n} className="pad-btn" disabled={locked} onClick={() => sel !== null && set(sel, n)}>
             {n}
           </button>
         ))}
-        <button className="pad-btn" disabled={disabled} onClick={() => sel !== null && set(sel, 0)}>
+        <button className="pad-btn" disabled={locked} onClick={() => sel !== null && set(sel, 0)}>
           ⌫
         </button>
       </div>

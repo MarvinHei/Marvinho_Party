@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { countryNames } from "@marvinho/shared";
+import { countryNames, type GuessCountryGuess } from "@marvinho/shared";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { silhouettePath, directionIcon } from "../game/geoProject.js";
+import { SpectateBar } from "./SpectateBar.js";
 
 const NAMES = countryNames()
   .map((c) => c.name)
@@ -27,6 +28,12 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
     [g?.geometry],
   );
 
+  // Stream our guesses so others can watch our POV read-only.
+  useEffect(() => {
+    if (!g) return;
+    store.net(seat.id)?.spectatePush(JSON.stringify({ guesses: g.guesses, solved: g.solved }));
+  }, [seat.id, g?.guesses, g?.solved]);
+
   if (!g) return null;
 
   const timed = seat.lobby?.settings.games.guesscountry?.timerEnabled ?? true;
@@ -34,6 +41,18 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
   const lowTime = timed && secondsLeft <= 10 && secondsLeft > 0 && !g.solved;
   const triesLeft = g.maxTries - g.guesses.length;
   const done = g.solved || triesLeft <= 0;
+
+  // Once done, we may be watching another player's guesses (read-only).
+  const watching = done ? seat.spectateTarget : null;
+  const frame =
+    watching && seat.spectateFrame?.targetId === watching
+      ? (JSON.parse(seat.spectateFrame.data) as { guesses: GuessCountryGuess[]; solved: boolean })
+      : null;
+  const guesses = frame ? frame.guesses : g.guesses;
+  const showSolved = frame ? frame.solved : g.solved;
+  const watchingName = watching
+    ? seat.geoStandings.find((s) => s.playerId === watching)?.nickname ?? "player"
+    : null;
 
   async function submit() {
     const net = store.net(seat.id);
@@ -65,7 +84,8 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
         <svg viewBox={`0 0 ${SIZE} ${SIZE}`} preserveAspectRatio="xMidYMid meet" className="geo-silhouette-svg">
           <path d={path} className="geo-shape" />
         </svg>
-        {g.solved && <div className="geo-solved-badge">Gelöst! 🎉</div>}
+        {watching && <div className="geo-watching pixel">👁 {watchingName}</div>}
+        {showSolved && <div className="geo-solved-badge">Gelöst! 🎉</div>}
 
         <div className="geo-standings-float">
           {seat.geoStandings.map((s) => (
@@ -105,8 +125,19 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
         )}
         <div className="error" style={{ minHeight: 16 }}>{msg}</div>
 
+        {done && (
+          <SpectateBar
+            seat={seat}
+            people={seat.geoStandings.map((s) => ({
+              playerId: s.playerId,
+              nickname: s.nickname,
+              color: s.color,
+            }))}
+          />
+        )}
+
         <div className="geo-history">
-          {g.guesses.map((gu, i) => (
+          {guesses.map((gu, i) => (
             <div key={i} className={`geo-guess${gu.correct ? " correct" : ""}`}>
               <span className="geo-guess-name">{gu.name}</span>
               {!gu.correct && (

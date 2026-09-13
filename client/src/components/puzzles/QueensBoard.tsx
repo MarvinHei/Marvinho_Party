@@ -12,25 +12,38 @@ interface Props {
   puzzle: QueensPuzzle;
   disabled: boolean;
   onSolved: (solution: number[]) => void;
+  /** Read-only external state to display (spectating another player). */
+  view?: number[];
+  /** Report the local state on change (for spectate streaming). */
+  onView?: (cells: number[]) => void;
 }
 
-export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
+export function QueensBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
   const N = puzzle.size;
   // 0 = empty, 1 = X mark, 2 = queen
-  const [cells, setCells] = useState<number[]>(() => new Array(N * N).fill(0));
+  const [own, setCells] = useState<number[]>(() => new Array(N * N).fill(0));
+  const locked = disabled || view !== undefined;
+  const cells = view ?? own;
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
 
   useEffect(() => {
-    if (disabled) return;
+    if (view !== undefined) return; // don't stream a spectated board
+    onViewRef.current?.(own);
+  }, [own, view]);
+
+  useEffect(() => {
+    if (locked) return;
     const queens: number[] = [];
-    cells.forEach((v, i) => v === 2 && queens.push(i));
+    own.forEach((v, i) => v === 2 && queens.push(i));
     if (queens.length === N && validateQueens(puzzle, queens)) onSolvedRef.current(queens);
-  }, [cells, disabled, puzzle, N]);
+  }, [own, locked, puzzle, N]);
 
   // A plain click cycles the cell: empty → X → queen → empty.
   function cycle(i: number) {
-    if (disabled) return;
+    if (locked) return;
     setCells((prev) => {
       const next = (prev[i] + 1) % 3;
       sfx(next === 2 ? "place" : "click");
@@ -47,7 +60,7 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
   const eraseMode = useRef(false);
 
   function paintCell(i: number) {
-    if (disabled) return;
+    if (locked) return;
     const target = eraseMode.current ? 0 : 1;
     setCells((prev) => {
       if (prev[i] === 2 || prev[i] === target) return prev; // skip queens + no-ops
@@ -69,10 +82,10 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
     window.addEventListener("pointerup", up);
     return () => window.removeEventListener("pointerup", up);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabled]);
+  }, [locked]);
 
   function onCellDown(i: number) {
-    if (disabled) return;
+    if (locked) return;
     dragging.current = true;
     moved.current = false;
     startCell.current = i;

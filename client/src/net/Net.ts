@@ -146,6 +146,8 @@ export class Net {
         hide: null,
         battle: null,
         runner: null,
+        spectateTarget: null,
+        spectateFrame: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -325,6 +327,11 @@ export class Net {
 
     this.socket.on("runner:state", (snap) => {
       this.patch((prev) => (prev.runner ? { runner: { ...prev.runner, snap } } : {}));
+    });
+
+    this.socket.on("spectate:frame", ({ targetId, data }) => {
+      // Only apply frames for the player we're currently watching.
+      this.patch((prev) => (prev.spectateTarget === targetId ? { spectateFrame: { targetId, data } } : {}));
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -569,6 +576,16 @@ export class Net {
   /** Runner — emit a shockwave. */
   runnerShock() {
     this.socket.emit("runner:shock");
+  }
+
+  /** Spectate — push my own in-progress snapshot for watchers. */
+  spectatePush(data: string) {
+    this.socket.emit("spectate:push", { data });
+  }
+
+  /** Spectate — set/clear which player's POV I'm watching. */
+  spectateWatch(targetId: string | null) {
+    this.socket.emit("spectate:watch", { targetId });
   }
 
   leave() {

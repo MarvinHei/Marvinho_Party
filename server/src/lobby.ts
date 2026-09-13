@@ -121,6 +121,9 @@ export class Lobby {
   /** The team game awaiting its draft-confirmation ready-gate, if any. */
   private assignGame: MinigameType | null = null;
   private sandbox = false;
+  /** Latest spectate snapshot per player, and who each spectator is watching. */
+  private spectateFrames = new Map<string, string>();
+  private spectateWatch = new Map<string, string>();
   /** True while the results podium waits for the host to confirm the advance. */
   private awaitingConfirm = false;
   /** How long the (sequential) board advance runs for this round's rewards (ms). */
@@ -507,6 +510,8 @@ export class Lobby {
     this.explainGame = null;
     this.assignGame = null;
     this.awaitingConfirm = false;
+    this.spectateFrames.clear();
+    this.spectateWatch.clear();
     this.phase = "countdown";
     const endsAt = Date.now() + COUNTDOWN_MS;
     this.io.to(this.id).emit("minigame:countdown", { game, endsAt });
@@ -1728,6 +1733,31 @@ export class Lobby {
 
   handleRunnerShock(playerId: string): void {
     if (this.phase === "minigame") this.runner?.shock(playerId);
+  }
+
+  // --- spectate (read-only POV of another player) -------------------------
+
+  handleSpectatePush(playerId: string, data: string): void {
+    if (this.phase !== "minigame") return;
+    // Guard against oversized snapshots.
+    if (typeof data !== "string" || data.length > 20000) return;
+    this.spectateFrames.set(playerId, data);
+    for (const [specId, targetId] of this.spectateWatch) {
+      if (targetId !== playerId) continue;
+      const spec = this.players.get(specId);
+      if (spec?.socketId) this.io.to(spec.socketId).emit("spectate:frame", { targetId: playerId, data });
+    }
+  }
+
+  handleSpectateWatch(playerId: string, targetId: string | null): void {
+    if (!targetId) {
+      this.spectateWatch.delete(playerId);
+      return;
+    }
+    this.spectateWatch.set(playerId, targetId);
+    const cached = this.spectateFrames.get(targetId);
+    const spec = this.players.get(playerId);
+    if (cached && spec?.socketId) this.io.to(spec.socketId).emit("spectate:frame", { targetId, data: cached });
   }
 
   private endRunner(): void {

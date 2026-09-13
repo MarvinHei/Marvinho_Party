@@ -327,6 +327,16 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleRunnerShock(session.playerId);
   });
 
+  socket.on("spectate:push", ({ data }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleSpectatePush(session.playerId, data);
+  });
+
+  socket.on("spectate:watch", ({ targetId }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleSpectateWatch(session.playerId, targetId);
+  });
+
   socket.on("lobby:debugStart", ({ game }, ack) => {
     try {
       if (!DEBUG_ENABLED) throw new Error("Debug mode is disabled.");

@@ -1013,6 +1013,11 @@ export interface ClientToServerEvents {
   "runner:jump": () => void;
   /** Runner — emit a shockwave that shoves nearby players (on cooldown). */
   "runner:shock": () => void;
+
+  /** Spectate — a player pushes an opaque snapshot of its own in-progress view. */
+  "spectate:push": (payload: { data: string }) => void;
+  /** Spectate — set (or clear, with null) which player's POV I'm watching. */
+  "spectate:watch": (payload: { targetId: string | null }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -1130,6 +1135,9 @@ export interface ServerToClientEvents {
   "runner:init": (payload: RunnerInitPayload) => void;
   /** Runner — a snapshot of players + nearby obstacles (~30/s). */
   "runner:state": (payload: RunnerStatePayload) => void;
+
+  /** Spectate — the latest snapshot of the player this client is watching. */
+  "spectate:frame": (payload: { targetId: string; data: string }) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;
