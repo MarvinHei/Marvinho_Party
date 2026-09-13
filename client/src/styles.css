@@ -2685,6 +2685,16 @@ input[type="text"]:focus {
   width: 100%;
   margin: 0 auto;
 }
+/* Decorative background: big idle character + hopping conga line. Sits behind
+   all the UI (but above the page background) and ignores pointer events. */
+.home-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
 .home-hero { display: flex; flex-direction: column; gap: 14px; }
 .home-title { text-align: left; font-size: clamp(30px, 5vw, 52px); margin: 0; }
 .home-lede {

@@ -6,6 +6,7 @@ import { DEBUG_FEATURE_ENABLED } from "../features.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
+import { HomeBackdrop } from "./HomeBackdrop.js";
 
 function initialCode(): string {
   const params = new URLSearchParams(window.location.search);
@@ -62,6 +63,8 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
 
   return (
     <div className="home-stage">
+      <HomeBackdrop />
+
       {/* Left: branding */}
       <section className="home-hero">
         <h1 className="title home-title intro-left">Marvinho Party</h1>

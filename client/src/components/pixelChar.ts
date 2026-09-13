@@ -44,6 +44,8 @@ export interface TokenOpts {
   me?: boolean;
   /** Dim the token (caught / eliminated). */
   alive?: boolean;
+  /** Eye closure 0 (open) .. 1 (shut), for a blink. */
+  blink?: number;
 }
 
 /**
@@ -94,11 +96,23 @@ export function drawToken(
   ctx.stroke();
 
   // Face.
+  const blink = opts.blink ?? 0;
   const eyeR = size * 0.13;
   const eyeY = cy - size * 0.06;
   const eyeDX = size * 0.18;
   for (const s of [-1, 1]) {
     const ex = cx + s * eyeDX;
+    if (blink > 0.5) {
+      // Closed eye: a short dark lash line.
+      ctx.strokeStyle = "#14122e";
+      ctx.lineWidth = Math.max(2, size * 0.06);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(ex - eyeR, eyeY);
+      ctx.lineTo(ex + eyeR, eyeY);
+      ctx.stroke();
+      continue;
+    }
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
     ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
