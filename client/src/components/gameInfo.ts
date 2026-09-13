@@ -13,6 +13,7 @@ export const GAME_ICON: Record<MinigameType, string> = {
   tango: "🪐",
   guesscountry: "🌍",
   travle: "🧭",
+  pong: "🏓",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -28,6 +29,7 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   tango: "#ffd23f",
   guesscountry: "#42d17a",
   travle: "#28e0d0",
+  pong: "#ffd23f",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -134,6 +136,14 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "You're given a start (A) and an end (B) country on the globe.",
       "Name the countries you'd cross to link them by land borders — they can be named in any order.",
       "Bridge them using the fewest countries to win.",
+    ],
+  },
+  pong: {
+    tagline: "Classic 1v1 Pong — first to the target wins.",
+    rules: [
+      "Move your paddle by moving the mouse up and down.",
+      "The ball speeds up every time it's hit — don't miss.",
+      "Players are paired into duels; an odd one out faces a CPU.",
     ],
   },
 };

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   CODENAMES_SIZES,
+  PONG_POINTS_OPTIONS,
   MINIGAME_NAMES,
   PUZZLE_DIFFICULTIES,
   PUZZLE_DIFFICULTY_LABELS,
@@ -214,6 +215,25 @@ export function LobbySettingsPanel({ seat, isHost }: { seat: SeatState; isHost: 
                       onChange={(e) => { sfx("click"); commit({ ...draft, travleOutlines: e.target.checked }); }}
                     />
                   </label>
+                )}
+
+                {/* Pong: points to win */}
+                {game === "pong" && (
+                  <div className="opt-row">
+                    <span className="opt-label">Play to</span>
+                    <div className="opt-btns">
+                      {PONG_POINTS_OPTIONS.map((p) => (
+                        <button
+                          key={p}
+                          className={`opt-btn${draft.pongPoints === p ? " on" : ""}`}
+                          disabled={disabled}
+                          onClick={() => { sfx("click"); commit({ ...draft, pongPoints: p }); }}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

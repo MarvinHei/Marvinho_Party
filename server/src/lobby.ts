@@ -47,6 +47,7 @@ import { PuzzleRound } from "./minigames/puzzleRound.js";
 import { generatePuzzle } from "./minigames/puzzleGen.js";
 import { GuessCountryRound } from "./minigames/guessCountry.js";
 import { TravleRound } from "./minigames/travle.js";
+import { PongRound } from "./minigames/pong.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -103,6 +104,7 @@ export class Lobby {
   private puzzle: PuzzleRound | null = null;
   private guessCountry: GuessCountryRound | null = null;
   private travle: TravleRound | null = null;
+  private pong: PongRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
@@ -377,6 +379,8 @@ export class Lobby {
     if (n >= 2) games.push("skribbl");
     // Tetris is versus — needs at least two players.
     if (n >= 2) games.push("tetris");
+    // Pong pairs players into 1v1 matches (an odd one out faces a CPU).
+    if (n >= 2) games.push("pong");
     // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
     if (canFormTeams(n)) {
       games.push("skribblteams");
@@ -494,6 +498,7 @@ export class Lobby {
       else if (game === "tetris") this.startTetris();
       else if (game === "guesscountry") this.startGuessCountry();
       else if (game === "travle") this.startTravle();
+      else if (game === "pong") this.startPong();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -1402,6 +1407,83 @@ export class Lobby {
       scoreboard,
       reveal: `${startName} → ${endName}`,
     });
+  }
+
+  // --- pong ---------------------------------------------------------------
+
+  private startPong(): void {
+    const players = this.connectedPlayers().map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      color: p.color,
+    }));
+    this.phase = "minigame";
+    this.currentMinigame = "pong";
+    this.pong = new PongRound(players, this.settings.pongPoints);
+    this.io.to(this.id).emit("minigame:start", { type: "pong" });
+    // Tell each player which paddle they control and who they're up against.
+    for (const p of this.connectedPlayers()) {
+      const init = this.pong.initFor(p.id);
+      if (!init || !p.socketId) continue;
+      this.io.to(p.socketId).emit("pong:init", {
+        side: init.side,
+        target: this.settings.pongPoints,
+        self: { name: init.self.name, color: init.self.color },
+        opponent: { name: init.opponent.name, color: init.opponent.color },
+        vsCpu: init.vsCpu,
+      });
+    }
+    // 30 Hz physics + per-player state broadcast.
+    let last = Date.now();
+    this.interval = setInterval(() => {
+      if (!this.pong) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      this.pong.tick(dt);
+      for (const p of this.connectedPlayers()) {
+        const s = this.pong.stateFor(p.id);
+        if (s && p.socketId) this.io.to(p.socketId).emit("pong:state", s);
+      }
+      if (this.pong.isComplete()) this.endPong();
+    }, 33);
+    // Hard time cap — matches usually finish well before this.
+    this.schedule(() => {
+      if (this.pong) this.endPong();
+    }, this.roundSecondsFor("pong") * 1000);
+  }
+
+  handlePongMove(playerId: string, y: number): void {
+    if (this.phase !== "minigame" || !this.pong) return;
+    this.pong.setPaddle(playerId, y);
+  }
+
+  private endPong(): void {
+    if (!this.pong) return;
+    const round = this.pong;
+    this.pong = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const s = round.statsFor(id);
+      const reward = s.won ? 3 : 1;
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: s.won,
+        detail: `${s.won ? "won" : "lost"} ${s.scored}–${s.conceded}${s.vsCpu ? " · vs CPU" : ""}`,
+      };
+    });
+
+    this.concludeMinigame({ type: "pong", ranking, rewards, scoreboard });
   }
 
   // --- shared minigame conclusion ----------------------------------------

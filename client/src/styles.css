@@ -756,6 +756,64 @@ input[type="text"]:focus {
   opacity: 0.75;
 }
 
+/* ---- Pong ---- */
+.pong-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.pong-topbar {
+  width: min(96vw, 1000px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 18px;
+}
+.pong-score {
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: 2px;
+}
+.pong-name { font-weight: 700; }
+.pong-field-frame {
+  position: relative;
+  width: min(96vw, 1000px, calc((100vh - 190px) * 900 / 520));
+  aspect-ratio: 900 / 520;
+  border: 3px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px #0d0b22, 0 8px 0 rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  background: #0c0a20;
+}
+.pong-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: ns-resize;
+}
+.pong-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(12, 10, 31, 0.74);
+  animation: fadeIn 0.3s ease both;
+}
+.pong-result { font-size: 26px; }
+.pong-result.win { color: var(--good); }
+.pong-result.lose { color: var(--bad); }
+.pong-sub { color: var(--ink-dim); font-size: 14px; }
+.pong-hint { font-size: 11px; color: var(--ink-dim); }
+
 /* ---- Ready bar ---- */
 .ready-bar {
   position: absolute;

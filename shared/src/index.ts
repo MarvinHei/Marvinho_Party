@@ -185,7 +185,8 @@ export type MinigameType =
   | "sudoku"
   | "tango"
   | "guesscountry"
-  | "travle";
+  | "travle"
+  | "pong";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -201,6 +202,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   tango: "Tango",
   guesscountry: "Guess the Country",
   travle: "Travle",
+  pong: "Pong",
 };
 
 // ---------------------------------------------------------------------------
@@ -231,6 +233,8 @@ export interface LobbySettings {
   codenamesSize: CodenamesSize;
   /** Travle: show the outlines of not-yet-named countries on the globe. */
   travleOutlines: boolean;
+  /** Pong: points needed to win a match. */
+  pongPoints: PongPoints;
 }
 
 /** Default round length per game (seconds), used to seed settings. */
@@ -247,6 +251,7 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   tango: PUZZLE_ROUND_SECONDS.tango,
   guesscountry: 120,
   travle: 180,
+  pong: 120,
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -285,6 +290,7 @@ export function defaultLobbySettings(): LobbySettings {
     tetrisRows: TETRIS_CONFIG.rows,
     codenamesSize: 5,
     travleOutlines: true,
+    pongPoints: 7,
   };
 }
 
@@ -336,6 +342,7 @@ export function sanitizeSettings(raw: unknown): LobbySettings {
   );
   out.codenamesSize = r.codenamesSize === 3 || r.codenamesSize === 4 ? r.codenamesSize : 5;
   out.travleOutlines = r.travleOutlines !== false;
+  out.pongPoints = PONG_POINTS_OPTIONS.includes(r.pongPoints as PongPoints) ? (r.pongPoints as PongPoints) : 7;
   return out;
 }
 
@@ -692,6 +699,36 @@ export interface TravleStanding {
 }
 
 // ---------------------------------------------------------------------------
+// Pong (real-time 1v1; the lobby is split into parallel matches)
+// ---------------------------------------------------------------------------
+
+export const PONG_POINTS_OPTIONS = [5, 7, 9] as const;
+export type PongPoints = (typeof PONG_POINTS_OPTIONS)[number];
+
+export interface PongInitPayload {
+  /** Which paddle this client controls. */
+  side: "left" | "right";
+  /** Points needed to win the match. */
+  target: number;
+  self: { name: string; color: string };
+  opponent: { name: string; color: string };
+  /** True when the opponent is a CPU (odd player count / practice). */
+  vsCpu: boolean;
+}
+
+/** Frequently-broadcast snapshot of one player's match (coords normalized 0..1). */
+export interface PongStatePayload {
+  ballX: number;
+  ballY: number;
+  padL: number; // left paddle center y (0..1)
+  padR: number; // right paddle center y (0..1)
+  scoreL: number;
+  scoreR: number;
+  over: boolean;
+  winner: "left" | "right" | null;
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -817,6 +854,9 @@ export interface ClientToServerEvents {
     payload: { name: string },
     ack: (res: Ack<{ code: string; name: string; connected: boolean }>) => void,
   ) => void;
+
+  /** Pong — set this player's paddle center (normalized 0..1). */
+  "pong:move": (payload: { y: number }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -914,6 +954,11 @@ export interface ServerToClientEvents {
     roundSeconds: number;
   }) => void;
   "travle:standings": (standings: TravleStanding[]) => void;
+
+  /** Pong — this player's match assignment. */
+  "pong:init": (payload: PongInitPayload) => void;
+  /** Pong — a per-player match snapshot (~30/s). */
+  "pong:state": (payload: PongStatePayload) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;

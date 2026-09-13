@@ -275,6 +275,11 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleTetrisDead(session.playerId);
   });
 
+  socket.on("pong:move", ({ y }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handlePongMove(session.playerId, y);
+  });
+
   socket.on("lobby:debugStart", ({ game }, ack) => {
     try {
       if (!DEBUG_ENABLED) throw new Error("Debug mode is disabled.");

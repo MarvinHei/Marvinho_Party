@@ -142,6 +142,7 @@ export class Net {
         geoStandings: [],
         travle: null,
         travleStandings: [],
+        pong: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -269,6 +270,19 @@ export class Net {
 
     this.socket.on("travle:standings", (standings) => {
       this.patch({ travleStandings: standings });
+    });
+
+    this.socket.on("pong:init", (init) => {
+      this.patch({
+        screen: "game",
+        minigame: "pong",
+        minigamePhase: "playing",
+        pong: { init, snap: null },
+      });
+    });
+
+    this.socket.on("pong:state", (snap) => {
+      this.patch((prev) => (prev.pong ? { pong: { ...prev.pong, snap } } : {}));
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -460,6 +474,11 @@ export class Net {
     return new Promise((resolve, reject) => {
       this.socket.emit("travle:guess", { name }, (res) => this.ack(res, resolve, reject));
     });
+  }
+
+  /** Pong — send this player's paddle center (normalized 0..1), fire-and-forget. */
+  pongMove(y: number) {
+    this.socket.emit("pong:move", { y });
   }
 
   leave() {

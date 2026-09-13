@@ -10,6 +10,8 @@ import type {
   PuzzleGame,
   TeamDraftTeam,
   PuzzleSpec,
+  PongInitPayload,
+  PongStatePayload,
   PuzzleStanding,
   SkribblSegment,
   SkribblTeamsView,
@@ -52,6 +54,12 @@ export interface TravleClientState {
   roundSeconds: number;
   named: { code: string; name: string; connected: boolean }[];
   connected: boolean;
+}
+
+export interface PongClientState {
+  init: PongInitPayload;
+  /** Latest server snapshot of this player's match. */
+  snap: PongStatePayload | null;
 }
 
 export type Screen = "home" | "lobby" | "game";
@@ -124,6 +132,7 @@ export interface SeatState {
   geoStandings: GeoStanding[];
   travle: TravleClientState | null;
   travleStandings: TravleStanding[];
+  pong: PongClientState | null;
 }
 
 export interface StoreSnapshot {
@@ -167,5 +176,6 @@ export function initialSeat(id: string, label: string): SeatState {
     geoStandings: [],
     travle: null,
     travleStandings: [],
+    pong: null,
   };
 }

@@ -13,10 +13,11 @@ export const PRACTICE_ICON: Record<MinigameType, string> = {
   tango: "🪐",
   guesscountry: "🌍",
   travle: "🧭",
+  pong: "🏓",
 };
 
 export const PRACTICE_ORDER: MinigameType[] = [
   "wordle", "zip", "queens", "sudoku", "tango", "skribbl",
   "skribblteams", "findword", "tetris", "codenames",
-  "guesscountry", "travle",
+  "guesscountry", "travle", "pong",
 ];

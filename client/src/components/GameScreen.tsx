@@ -13,6 +13,7 @@ import { TetrisPanel } from "./TetrisPanel.js";
 import { PuzzlePanel } from "./PuzzlePanel.js";
 import { GuessCountryPanel } from "./GuessCountryPanel.js";
 import { TravlePanel } from "./TravlePanel.js";
+import { PongPanel } from "./PongPanel.js";
 import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -97,6 +98,13 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     return (
       <div className="game-wrap">
         <TravlePanel seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "pong" && seat.pong) {
+    return (
+      <div className="game-wrap">
+        <PongPanel seat={seat} />
       </div>
     );
   }
