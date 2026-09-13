@@ -378,19 +378,25 @@ export class Net {
     return data;
   }
 
-  create(nickname: string): Promise<JoinedLobby> {
+  create(nickname: string, appearance?: import("@marvinho/shared").Appearance): Promise<JoinedLobby> {
     return new Promise((resolve, reject) => {
-      this.socket.emit("lobby:create", { nickname }, (res) =>
+      this.socket.emit("lobby:create", { nickname, appearance }, (res) =>
         this.ack(res, (d) => resolve(this.adopt(d)), reject),
       );
     });
   }
 
-  join(lobbyId: string, nickname: string): Promise<JoinedLobby> {
+  join(lobbyId: string, nickname: string, appearance?: import("@marvinho/shared").Appearance): Promise<JoinedLobby> {
     return new Promise((resolve, reject) => {
-      this.socket.emit("lobby:join", { lobbyId, nickname }, (res) =>
+      this.socket.emit("lobby:join", { lobbyId, nickname, appearance }, (res) =>
         this.ack(res, (d) => resolve(this.adopt(d)), reject),
       );
+    });
+  }
+
+  setAppearance(appearance: import("@marvinho/shared").Appearance): Promise<null> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:setAppearance", { appearance }, (res) => this.ack(res, resolve, reject));
     });
   }
 

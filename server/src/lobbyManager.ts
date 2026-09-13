@@ -1,6 +1,6 @@
 import type { Server } from "socket.io";
 import { customAlphabet } from "nanoid";
-import type { ClientToServerEvents, ServerToClientEvents } from "@marvinho/shared";
+import type { Appearance, ClientToServerEvents, ServerToClientEvents } from "@marvinho/shared";
 import { Lobby } from "./lobby.js";
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -17,7 +17,7 @@ export class LobbyManager {
 
   constructor(private io: IO) {}
 
-  createLobby(host: { socketId: string; nickname: string }): {
+  createLobby(host: { socketId: string; nickname: string; appearance?: Appearance }): {
     lobby: Lobby;
     playerId: string;
   } {
@@ -29,6 +29,7 @@ export class LobbyManager {
       id: playerId,
       socketId: host.socketId,
       nickname: host.nickname,
+      appearance: host.appearance,
     });
     lobby.onEmpty = () => this.lobbies.delete(code);
     this.lobbies.set(code, lobby);
@@ -41,12 +42,17 @@ export class LobbyManager {
 
   joinLobby(
     code: string,
-    player: { socketId: string; nickname: string },
+    player: { socketId: string; nickname: string; appearance?: Appearance },
   ): { lobby: Lobby; playerId: string } {
     const lobby = this.getLobby(code);
     if (!lobby) throw new Error("Lobby not found.");
     const playerId = makePlayerId();
-    lobby.addPlayer({ id: playerId, socketId: player.socketId, nickname: player.nickname });
+    lobby.addPlayer({
+      id: playerId,
+      socketId: player.socketId,
+      nickname: player.nickname,
+      appearance: player.appearance,
+    });
     return { lobby, playerId };
   }
 

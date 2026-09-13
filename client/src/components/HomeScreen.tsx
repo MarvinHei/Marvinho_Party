@@ -7,6 +7,8 @@ import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
 import { HomeBackdrop } from "./HomeBackdrop.js";
+import { CharacterCreator } from "./CharacterCreator.js";
+import { loadAppearance, saveAppearance } from "../state/appearance.js";
 
 function initialCode(): string {
   const params = new URLSearchParams(window.location.search);
@@ -19,6 +21,12 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [practiceBusy, setPracticeBusy] = useState(false);
+  const [appearance, setAppearance] = useState(loadAppearance);
+
+  function changeAppearance(a: typeof appearance) {
+    setAppearance(a);
+    saveAppearance(a);
+  }
 
   const net = store.net(seat.id);
 
@@ -38,7 +46,7 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
     setBusy(true);
     store.setSeatError(seat.id, null);
     try {
-      await net.create(nickname);
+      await net.create(nickname, appearance);
     } catch (e) {
       store.setSeatError(seat.id, e instanceof Error ? e.message : "Failed");
     } finally {
@@ -51,7 +59,7 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
     setBusy(true);
     store.setSeatError(seat.id, null);
     try {
-      await net.join(code, nickname);
+      await net.join(code, nickname, appearance);
     } catch (e) {
       store.setSeatError(seat.id, e instanceof Error ? e.message : "Failed");
     } finally {
@@ -81,6 +89,11 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
           <h2 className="pixel" style={{ fontSize: 15, marginTop: 0 }}>Join the party</h2>
 
           <div className="stack">
+            <div>
+              <label>Your character</label>
+              <CharacterCreator value={appearance} onChange={changeAppearance} />
+            </div>
+
             <div>
               <label>Your nickname</label>
               <input

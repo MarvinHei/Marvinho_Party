@@ -4,6 +4,7 @@ import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
 import {
+  sanitizeAppearance,
   sanitizeNickname,
   sanitizeSettings,
   type ClientToServerEvents,
@@ -55,13 +56,14 @@ io.on("connection", (socket) => {
     ack({ ok: false, error: message });
   };
 
-  socket.on("lobby:create", ({ nickname }, ack) => {
+  socket.on("lobby:create", ({ nickname, appearance }, ack) => {
     try {
       const name = sanitizeNickname(nickname);
       if (!name) throw new Error("Please pick a nickname (1-16 characters).");
       const { lobby, playerId } = manager.createLobby({
         socketId: socket.id,
         nickname: name,
+        appearance: appearance ? sanitizeAppearance(appearance) : undefined,
       });
       session = { lobbyId: lobby.id, playerId };
       socket.join(lobby.id);
@@ -72,13 +74,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("lobby:join", ({ lobbyId, nickname }, ack) => {
+  socket.on("lobby:join", ({ lobbyId, nickname, appearance }, ack) => {
     try {
       const name = sanitizeNickname(nickname);
       if (!name) throw new Error("Please pick a nickname (1-16 characters).");
       const { lobby, playerId } = manager.joinLobby(lobbyId, {
         socketId: socket.id,
         nickname: name,
+        appearance: appearance ? sanitizeAppearance(appearance) : undefined,
       });
       session = { lobbyId: lobby.id, playerId };
       socket.join(lobby.id);
@@ -157,6 +160,18 @@ io.on("connection", (socket) => {
       const lobby = manager.getLobby(session.lobbyId);
       if (!lobby) throw new Error("Lobby not found.");
       lobby.updateSettings(session.playerId, sanitizeSettings(settings));
+      ack({ ok: true, data: null });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
+  socket.on("lobby:setAppearance", ({ appearance }, ack) => {
+    try {
+      if (!session) throw new Error("Not in a lobby.");
+      const lobby = manager.getLobby(session.lobbyId);
+      if (!lobby) throw new Error("Lobby not found.");
+      lobby.setAppearance(session.playerId, sanitizeAppearance(appearance));
       ack({ ok: true, data: null });
     } catch (err) {
       fail(ack, err);

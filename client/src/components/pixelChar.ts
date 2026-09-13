@@ -46,6 +46,116 @@ export interface TokenOpts {
   alive?: boolean;
   /** Eye closure 0 (open) .. 1 (shut), for a blink. */
   blink?: number;
+  /** Hair style index (0 = bald). */
+  hair?: number;
+  /** Hair colour. */
+  hairColor?: string;
+  /** Mouth style index (0 = neutral line). */
+  mouth?: number;
+}
+
+/** Hair sits clipped to the head silhouette, so it always reads on the body. */
+function drawHair(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  style: number,
+  color: string,
+) {
+  if (!style || style <= 0) return;
+  const L = cx - size / 2;
+  const T = cy - size / 2;
+  const W = size;
+  const H = size;
+  const y = (frac: number) => T + H * frac;
+  ctx.save();
+  roundRect(ctx, L, T, W, H, size * 0.34);
+  ctx.clip();
+  ctx.fillStyle = color;
+  switch (style) {
+    case 1: // short
+      ctx.fillRect(L, T, W, H * 0.33);
+      break;
+    case 2: { // spiky bangs (zigzag hairline)
+      ctx.beginPath();
+      ctx.moveTo(L, T);
+      ctx.lineTo(L + W, T);
+      ctx.lineTo(L + W, y(0.26));
+      const n = 6;
+      for (let i = n; i >= 0; i--) {
+        ctx.lineTo(L + (i / n) * W, y(i % 2 === 0 ? 0.44 : 0.24));
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 3: // bowl cut
+      ctx.fillRect(L, T, W, H * 0.4);
+      break;
+    case 4: // mohawk (central strip)
+      ctx.fillRect(cx - W * 0.11, T, W * 0.22, H * 0.52);
+      break;
+    case 5: // afro (fill + scalloped hairline)
+      ctx.fillRect(L, T, W, H * 0.28);
+      for (let i = 0; i <= 5; i++) {
+        ctx.beginPath();
+        ctx.arc(L + i * (W / 5), y(0.28), W * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 6: { // side swoop (diagonal hairline)
+      ctx.beginPath();
+      ctx.moveTo(L, T);
+      ctx.lineTo(L + W, T);
+      ctx.lineTo(L + W, y(0.2));
+      ctx.lineTo(L, y(0.46));
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+function drawMouth(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, style: number) {
+  const my = cy + size * 0.22;
+  ctx.fillStyle = "#14122e";
+  ctx.strokeStyle = "#14122e";
+  switch (style) {
+    case 1: // smile
+      ctx.lineWidth = Math.max(2, size * 0.06);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(cx, my - size * 0.04, size * 0.15, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      break;
+    case 2: // open oval
+      ctx.beginPath();
+      ctx.ellipse(cx, my, size * 0.09, size * 0.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 3: // grin with a tooth line
+      ctx.beginPath();
+      ctx.moveTo(cx - size * 0.16, my - size * 0.04);
+      ctx.quadraticCurveTo(cx, my + size * 0.15, cx + size * 0.16, my - size * 0.04);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = Math.max(1, size * 0.025);
+      ctx.beginPath();
+      ctx.moveTo(cx - size * 0.12, my - size * 0.01);
+      ctx.lineTo(cx + size * 0.12, my - size * 0.01);
+      ctx.stroke();
+      break;
+    case 4: // small o
+      ctx.beginPath();
+      ctx.arc(cx, my, size * 0.055, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    default: // 0 neutral line
+      ctx.fillRect(cx - size * 0.11, cy + size * 0.2, size * 0.22, size * 0.05);
+  }
 }
 
 /**
@@ -95,6 +205,9 @@ export function drawToken(
   roundRect(ctx, left, top, bw, bh, br);
   ctx.stroke();
 
+  // Hair (clipped to the head, so it sits on the body).
+  drawHair(ctx, cx, cy, size, opts.hair ?? 0, opts.hairColor ?? "#2b2b33");
+
   // Face.
   const blink = opts.blink ?? 0;
   const eyeR = size * 0.13;
@@ -126,8 +239,7 @@ export function drawToken(
     ctx.arc(ex - size * 0.03, eyeY - size * 0.03, eyeR * 0.22, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.fillStyle = "rgba(20,18,46,0.7)";
-  ctx.fillRect(cx - size * 0.11, cy + size * 0.2, size * 0.22, size * 0.05);
+  drawMouth(ctx, cx, cy, size, opts.mouth ?? 0);
 
   ctx.restore();
 }

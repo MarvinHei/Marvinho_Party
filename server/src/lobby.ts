@@ -13,10 +13,12 @@ import {
   borderableCountries,
   canFormTeams,
   countryByCode,
+  defaultAppearance,
   defaultLobbySettings,
   possibleTeamCounts,
   rewardForRank,
   shortestCountryPath,
+  type Appearance,
   type ClientToServerEvents,
   type CodenamesAssignment,
   type CodenamesTeam,
@@ -65,6 +67,7 @@ interface Player {
   isHost: boolean;
   connected: boolean;
   ready: boolean;
+  appearance: Appearance;
 }
 
 const teamName = (t: CodenamesTeam) => (t === "a" ? "Red" : "Blue");
@@ -136,19 +139,21 @@ export class Lobby {
   constructor(
     private io: IO,
     id: string,
-    host: { id: string; socketId: string; nickname: string },
+    host: { id: string; socketId: string; nickname: string; appearance?: Appearance },
   ) {
     this.id = id;
     this.hostId = host.id;
+    const appearance = host.appearance ?? { ...defaultAppearance(), color: PLAYER_COLORS[0] };
     this.players.set(host.id, {
       id: host.id,
       socketId: host.socketId,
       nickname: host.nickname,
-      color: PLAYER_COLORS[0],
+      color: appearance.color,
       position: 0,
       isHost: true,
       connected: true,
       ready: false,
+      appearance,
     });
   }
 
@@ -166,7 +171,7 @@ export class Lobby {
     return [...this.players.values()].filter((p) => p.connected);
   }
 
-  addPlayer(player: { id: string; socketId: string; nickname: string }): void {
+  addPlayer(player: { id: string; socketId: string; nickname: string; appearance?: Appearance }): void {
     // In sandbox we also allow joining between practice rounds (intermission).
     const joinable = this.phase === "lobby" || (this.sandbox && this.phase === "intermission");
     if (!joinable) throw new Error("Game already started.");
@@ -175,17 +180,30 @@ export class Lobby {
       throw new Error("You are already in this lobby.");
     }
     if (this.players.size >= GAME_CONFIG.maxPlayers) throw new Error("Lobby is full.");
-    const color = PLAYER_COLORS[this.players.size % PLAYER_COLORS.length];
+    // Their chosen colour, else the next colour in join order.
+    const fallback = PLAYER_COLORS[this.players.size % PLAYER_COLORS.length];
+    const appearance = player.appearance ?? { ...defaultAppearance(), color: fallback };
     this.players.set(player.id, {
       id: player.id,
       socketId: player.socketId,
       nickname: player.nickname,
-      color,
+      color: appearance.color,
       position: 0,
       isHost: false,
       connected: true,
       ready: false,
+      appearance,
     });
+    this.broadcastLobby();
+  }
+
+  /** Change a player's character look (lobby phase only). */
+  setAppearance(playerId: string, appearance: Appearance): void {
+    if (this.phase !== "lobby") return;
+    const player = this.players.get(playerId);
+    if (!player) return;
+    player.appearance = appearance;
+    player.color = appearance.color;
     this.broadcastLobby();
   }
 
@@ -1881,6 +1899,7 @@ export class Lobby {
       isHost: p.isHost,
       connected: p.connected,
       ready: p.ready,
+      appearance: p.appearance,
     };
   }
 
