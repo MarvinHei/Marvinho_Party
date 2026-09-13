@@ -38,18 +38,21 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
     });
   }
 
-  // Hold and drag to erase: any X the drag passes over is cleared. Empty cells
-  // and queens are left untouched.
+  // Hold and drag to mark/unmark several cells at once. The stroke's mode is set
+  // by the cell it starts on: from an empty cell it paints X's; from an existing
+  // X it erases them. Queens are never touched by a drag.
   const dragging = useRef(false);
   const moved = useRef(false);
   const startCell = useRef<number | null>(null);
+  const eraseMode = useRef(false);
 
-  function eraseX(i: number) {
+  function paintCell(i: number) {
     if (disabled) return;
+    const target = eraseMode.current ? 0 : 1;
     setCells((prev) => {
-      if (prev[i] !== 1) return prev; // only clear X marks
+      if (prev[i] === 2 || prev[i] === target) return prev; // skip queens + no-ops
       sfx("click");
-      return prev.map((v, idx) => (idx === i ? 0 : v));
+      return prev.map((v, idx) => (idx === i ? target : v));
     });
   }
 
@@ -77,11 +80,13 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
   function onCellEnter(i: number) {
     if (!dragging.current) return;
     if (!moved.current) {
-      // First movement turns the gesture into an erase stroke; clear the origin too.
+      // First movement sets the mode: erase if it began on an X, else paint.
       moved.current = true;
-      if (startCell.current !== null) eraseX(startCell.current);
+      const start = startCell.current;
+      eraseMode.current = start !== null && cells[start] === 1;
+      if (start !== null) paintCell(start);
     }
-    eraseX(i);
+    paintCell(i);
   }
 
   // Queens that clash: share a row, column or region, or touch (incl. diagonally).
