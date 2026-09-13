@@ -36,6 +36,12 @@ export function App() {
 
   const active = snap.seats.find((s) => s.id === snap.activeSeatId);
 
+  // The opening theme loops on the start/lobby screens; once the game itself
+  // starts, hand off to the in-game background loop.
+  useEffect(() => {
+    if (active?.screen === "game") audio.enterGame();
+  }, [active?.screen]);
+
   return (
     <div className="app">
       {DEBUG_FEATURE_ENABLED && <DebugBar />}

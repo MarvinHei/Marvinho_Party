@@ -6,11 +6,8 @@
 // unlock() (wired to the first pointer/key event in App).
 
 const MUSIC_URL = "/audio/music.mp3";
-// One-shot intro played once on the first unlock, then it hands off to the loop.
+// Start-screen theme; loops until the game starts, then MUSIC_URL takes over.
 const OPENING_URL = "/audio/opening.mp3";
-// Hand-off from the intro to the loop: a cymbal crash, then an 8-bit explosion.
-const CYMBAL_URL = "/audio/crash-cymbal.wav";
-const EXPLOSION_URL = "/audio/explosion.mp3";
 const LS_KEY = "marvinho.audio";
 
 export type SfxName =
@@ -25,7 +22,6 @@ export type SfxName =
   | "place"       // puzzle "commit" (queen placed / number set)
   | "spin"        // wheel spinning
   | "countdown"   // pre-game countdown beep
-  | "crash"       // explosion between the intro and the background loop
   | "win";        // game / match won
 
 interface Settings {
@@ -53,9 +49,9 @@ class AudioManager {
   private analyserNode: AnalyserNode | null = null;
   private musicEl: HTMLAudioElement | null = null;
   private openingEl: HTMLAudioElement | null = null;
-  private explosionEl: HTMLAudioElement | null = null;
-  private cymbalEl: HTMLAudioElement | null = null;
   private gameMusicEl: HTMLAudioElement | null = null;
+  /** Whichever music element is currently meant to be audible (for gapless switches). */
+  private currentMusicEl: HTMLAudioElement | null = null;
   /** True once music playback has actually begun (survives autoplay blocks). */
   private started = false;
   private gameMusicUrl: string | null = null;
@@ -158,7 +154,7 @@ class AudioManager {
   private startMusic() {
     if (!this.ctx || !this.musicGain || this.started) return;
 
-    // Build the elements + intro→loop hand-off once; play attempts can retry.
+    // Build the two loops once; play attempts can retry after an autoplay block.
     if (!this.openingEl) {
       const el = new Audio(MUSIC_URL);
       el.loop = true;
@@ -171,7 +167,9 @@ class AudioManager {
       }
       this.musicEl = el;
 
+      // The opening theme loops on the start screen until the game begins.
       const opening = new Audio(OPENING_URL);
+      opening.loop = true;
       opening.crossOrigin = "anonymous";
       opening.preload = "auto";
       try {
@@ -180,28 +178,6 @@ class AudioManager {
         // Fallback: element plays directly (no visualizer contribution).
       }
       this.openingEl = opening;
-
-      let handedOff = false;
-      const startIdle = (crash: boolean) => {
-        if (handedOff) return;
-        handedOff = true;
-        this.phase = "background";
-        this.emit();
-        const beginLoop = () => {
-          // Only resume the idle loop if a game track hasn't taken over meanwhile.
-          if (!this.gameMusicEl || this.gameMusicEl.paused) this.playEl(el);
-        };
-        if (crash) {
-          // Hand-off: opening → cymbal crash → 8-bit explosion → background loop.
-          this.playCymbal();
-          window.setTimeout(() => {
-            this.playExplosion();
-            beginLoop();
-          }, 260);
-        } else {
-          beginLoop();
-        }
-      };
       opening.addEventListener("playing", () => {
         this.started = true;
         if (this.phase === "pre") {
@@ -209,71 +185,35 @@ class AudioManager {
           this.emit();
         }
       });
-      opening.addEventListener("ended", () => startIdle(true), { once: true });
-      opening.addEventListener("error", () => startIdle(false), { once: true });
     }
 
     // (Re)attempt playback. If the browser blocks autoplay it stays un-started
     // and the next unlock() (e.g. the first click/keypress) tries again.
-    void this.openingEl.play().then(() => { this.started = true; }).catch(() => {
+    const current = this.phase === "background" ? this.musicEl : this.openingEl;
+    this.currentMusicEl = current;
+    void current?.play().then(() => { this.started = true; }).catch(() => {
       /* blocked — retried on the next unlock() */
     });
   }
 
-  /** Play the cymbal crash sample (the first hit of the intro hand-off). */
-  private playCymbal() {
+  /**
+   * Switch from the looping opening theme to the in-game background loop. Called
+   * when the game starts; idempotent.
+   */
+  enterGame() {
     this.ensureGraph();
-    if (!this.ctx || !this.sfxGain) return;
-    if (this.ctx.state === "suspended") void this.ctx.resume();
-    if (!this.cymbalEl) {
-      const el = new Audio(CYMBAL_URL);
-      el.crossOrigin = "anonymous";
-      el.preload = "auto";
-      try {
-        this.ctx.createMediaElementSource(el).connect(this.sfxGain);
-      } catch {
-        // Fallback: element plays directly (no visualizer contribution).
-      }
-      this.cymbalEl = el;
+    if (this.phase === "background") return;
+    this.phase = "background";
+    this.emit();
+    if (this.ctx?.state === "suspended") void this.ctx.resume();
+    // If a game-specific track is already playing, keep it; otherwise cross to
+    // the background loop with no overlap.
+    if (this.gameMusicEl && !this.gameMusicEl.paused) {
+      this.fadeOutPause(this.openingEl);
+      this.currentMusicEl = this.gameMusicEl;
+    } else {
+      this.switchMusic(this.musicEl);
     }
-    const el = this.cymbalEl;
-    this.cancelFade(el);
-    el.volume = 0.45; // a touch quieter than the rest of the hand-off
-    try {
-      el.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
-    void el.play().catch(() => {
-      /* ignore */
-    });
-  }
-
-  /** Play the explosion sample (falls back to a synthesized crash). */
-  private playExplosion() {
-    this.ensureGraph();
-    if (!this.ctx || !this.sfxGain) return;
-    if (this.ctx.state === "suspended") void this.ctx.resume();
-    if (!this.explosionEl) {
-      const el = new Audio(EXPLOSION_URL);
-      el.crossOrigin = "anonymous";
-      el.preload = "auto";
-      try {
-        this.ctx.createMediaElementSource(el).connect(this.sfxGain);
-      } catch {
-        // Fallback: element plays directly (no visualizer contribution).
-      }
-      this.explosionEl = el;
-    }
-    const el = this.explosionEl;
-    this.cancelFade(el);
-    el.volume = 1;
-    try {
-      el.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
-    void el.play().catch(() => this.play("crash"));
   }
 
   /**
@@ -285,11 +225,10 @@ class AudioManager {
     this.ensureGraph();
     if (!this.ctx || !this.musicGain) return;
     if (this.ctx.state === "suspended") void this.ctx.resume();
-    // Duck the idle loop (and any still-playing intro) while the game track plays.
-    this.fadeOutPause(this.musicEl);
-    this.fadeOutPause(this.openingEl);
     if (this.gameMusicUrl !== url) {
-      this.fadeOutPause(this.gameMusicEl);
+      if (this.gameMusicEl && this.gameMusicEl !== this.currentMusicEl) {
+        this.fadeOutPause(this.gameMusicEl);
+      }
       const el = new Audio(url);
       el.loop = true;
       el.crossOrigin = "anonymous";
@@ -303,16 +242,14 @@ class AudioManager {
       this.gameMusicEl = el;
       this.gameMusicUrl = url;
     }
-    // Restart the game track from the top at full volume.
-    this.playEl(this.gameMusicEl, true);
+    // Cross to the game track (fades out the idle/opening loop first, no overlap).
+    this.switchMusic(this.gameMusicEl, true);
   }
 
-  /** Fade out the game track and resume the idle background loop. */
+  /** Fade out the game track and resume the idle background loop (no overlap). */
   stopGameMusic() {
-    this.fadeOutPause(this.gameMusicEl);
-    if (this.musicEl && this.unlocked) {
-      this.playEl(this.musicEl);
-    }
+    if (this.unlocked) this.switchMusic(this.musicEl);
+    else this.fadeOutPause(this.gameMusicEl);
   }
 
   // --- fade helpers ------------------------------------------------------
@@ -326,11 +263,17 @@ class AudioManager {
     }
   }
 
-  /** Ramp an element's volume to 0 over `ms`, then pause it and restore volume. */
-  private fadeOutPause(el: HTMLAudioElement | null, ms = 450) {
-    if (!el) return;
+  /**
+   * Ramp an element's volume to 0 over `ms`, then pause it and restore volume.
+   * `onDone` runs once the element is fully out (or immediately if it wasn't
+   * playing), so callers can start the next track without any overlap.
+   */
+  private fadeOutPause(el: HTMLAudioElement | null, ms = 450, onDone?: () => void) {
+    if (!el || el.paused) {
+      onDone?.();
+      return;
+    }
     this.cancelFade(el);
-    if (el.paused) return;
     const startVol = el.volume;
     const steps = 15;
     let i = 0;
@@ -341,9 +284,27 @@ class AudioManager {
         this.cancelFade(el);
         el.pause();
         el.volume = startVol; // restore for the next play
+        onDone?.();
       }
     }, Math.max(10, ms / steps));
     this.fadeTimers.set(el, id);
+  }
+
+  /**
+   * Switch the audible music to `nextEl` with no overlap: fade the current track
+   * fully out first, then start the next one.
+   */
+  private switchMusic(nextEl: HTMLAudioElement | null, resetToStart = false) {
+    const prev = this.currentMusicEl;
+    this.currentMusicEl = nextEl;
+    const start = () => {
+      if (nextEl) this.playEl(nextEl, resetToStart);
+    };
+    if (prev && prev !== nextEl && !prev.paused) {
+      this.fadeOutPause(prev, 380, start); // old out, then new in — no overlap
+    } else {
+      start();
+    }
   }
 
   /** Play/resume at full element volume, cancelling any in-flight fade. */
@@ -426,9 +387,6 @@ class AudioManager {
       case "countdown":
         this.blip(t, 660, 0.12, "sine", 0.26);
         break;
-      case "crash":
-        this.explosion(t);
-        break;
       case "win":
         this.arpeggio(t, [523.25, 659.25, 783.99, 1046.5], 0.12, 0.3);
         this.sweep(t + 0.5, 500, 1200, 0.4, 0.18);
@@ -492,40 +450,6 @@ class AudioManager {
       src.connect(filt).connect(ng).connect(this.sfxGain!);
       src.start(t);
       src.stop(t + 0.07);
-    }
-  }
-
-  /** A short explosion: a low boom under a downward-swept noise blast. */
-  private explosion(t: number) {
-    const ctx = this.ctx!;
-    // Low sine boom.
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(140, t);
-    osc.frequency.exponentialRampToValueAtTime(34, t + 0.5);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-    osc.connect(g).connect(this.sfxGain!);
-    osc.start(t);
-    osc.stop(t + 0.66);
-    // Noise blast with a lowpass sweeping down (the "boom" body).
-    if (this.noiseBuffer) {
-      const src = ctx.createBufferSource();
-      src.buffer = this.noiseBuffer;
-      src.loop = true;
-      const ng = ctx.createGain();
-      const filt = ctx.createBiquadFilter();
-      filt.type = "lowpass";
-      filt.frequency.setValueAtTime(3400, t);
-      filt.frequency.exponentialRampToValueAtTime(280, t + 0.5);
-      ng.gain.setValueAtTime(0.0001, t);
-      ng.gain.exponentialRampToValueAtTime(0.5, t + 0.015);
-      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-      src.connect(filt).connect(ng).connect(this.sfxGain!);
-      src.start(t);
-      src.stop(t + 0.6);
     }
   }
 
