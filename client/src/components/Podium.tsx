@@ -31,7 +31,7 @@ function ResultsConfirm({ seat }: { seat: SeatState }) {
 }
 
 const MEDALS = ["🥇", "🥈", "🥉"];
-const HEIGHTS = [132, 102, 80];
+const HEIGHTS = [186, 146, 116];
 
 /** The same pixel character that races on the board, drawn in CSS so it can sit
  *  on the podium. */
@@ -69,7 +69,7 @@ function Column({ row, spot }: { row: ScoreRow; spot: number }) {
         </div>
       )}
       <div className="pod-medal">{MEDALS[row.rank] ?? `#${row.rank + 1}`}</div>
-      <CharAvatar color={row.color} size={spot === 1 ? 54 : 44} />
+      <CharAvatar color={row.color} size={spot === 1 ? 74 : 60} />
       <div className="pod-name">{row.nickname}</div>
       <div
         className="pod-block"
@@ -84,7 +84,7 @@ function Column({ row, spot }: { row: ScoreRow; spot: number }) {
 }
 
 function TeamColumn({ team }: { team: TeamScore }) {
-  const height = team.won ? 210 : 150;
+  const height = team.won ? 288 : 208;
   return (
     <div className={`team-col${team.won ? " won" : ""}`}>
       <div className="team-medal">{team.won ? "🏆" : ""}</div>
