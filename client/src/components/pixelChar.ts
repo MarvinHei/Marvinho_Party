@@ -55,7 +55,7 @@ export interface TokenOpts {
 }
 
 /** Hair sits clipped to the head silhouette, so it always reads on the body. */
-function drawHair(
+export function drawHair(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -118,7 +118,7 @@ function drawHair(
   ctx.restore();
 }
 
-function drawMouth(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, style: number) {
+export function drawMouth(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, style: number) {
   const my = cy + size * 0.22;
   ctx.fillStyle = "#14122e";
   ctx.strokeStyle = "#14122e";

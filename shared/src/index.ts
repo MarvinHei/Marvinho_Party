@@ -161,6 +161,15 @@ export interface Appearance {
   mouth: number;
 }
 
+/** A player's look keyed by id, sent with real-time game inits so their token
+ *  can render hair/mouth (body colour already rides on each dot). */
+export interface TokenLook {
+  id: string;
+  hair: number;
+  hairColor: string;
+  mouth: number;
+}
+
 export function defaultAppearance(): Appearance {
   return { color: PLAYER_COLORS[0], hair: 1, hairColor: HAIR_COLORS[0], mouth: 1 };
 }
@@ -811,6 +820,8 @@ export interface HideInitPayload {
   releaseAt: number;
   endsAt: number;
   self: { name: string; color: string };
+  /** Every player's look, so tokens render hair/mouth. */
+  appearances: TokenLook[];
 }
 
 export interface HideDot {
@@ -842,6 +853,8 @@ export interface BattleInitPayload {
   walls: string;
   endsAt: number;
   self: { name: string; color: string };
+  /** Every player's look, so tokens render hair/mouth. */
+  appearances: TokenLook[];
 }
 
 export interface BattleDot {
@@ -881,6 +894,8 @@ export interface RunnerInitPayload {
   shockCooldownMs: number;
   endsAt: number;
   self: { name: string; color: string };
+  /** Every player's look, so characters render hair/mouth. */
+  appearances: TokenLook[];
 }
 
 /** One obstacle, positioned in screen space (x = worldX − camX). */

@@ -36,6 +36,7 @@ import {
   type SkribblSegment,
   type TeamDraftTeam,
   type TeamScore,
+  type TokenLook,
   type TravleStanding,
   type WordleStanding,
 } from "@marvinho/shared";
@@ -169,6 +170,16 @@ export class Lobby {
 
   private connectedPlayers(): Player[] {
     return [...this.players.values()].filter((p) => p.connected);
+  }
+
+  /** Each connected player's look, for real-time game init payloads. */
+  private lookRoster(): TokenLook[] {
+    return this.connectedPlayers().map((p) => ({
+      id: p.id,
+      hair: p.appearance.hair,
+      hairColor: p.appearance.hairColor,
+      mouth: p.appearance.mouth,
+    }));
   }
 
   addPlayer(player: { id: string; socketId: string; nickname: string; appearance?: Appearance }): void {
@@ -1559,6 +1570,7 @@ export class Lobby {
         releaseAt: this.hide.releaseAt,
         endsAt: this.hide.endsAt,
         self: this.hide.infoOf(p.id),
+        appearances: this.lookRoster(),
       });
     }
     let last = Date.now();
@@ -1652,6 +1664,7 @@ export class Lobby {
         walls,
         endsAt: this.battle.endsAt,
         self: this.battle.infoOf(p.id),
+        appearances: this.lookRoster(),
       });
     }
     let last = Date.now();
@@ -1729,6 +1742,7 @@ export class Lobby {
         shockCooldownMs: this.runner.shockCooldownMs,
         endsAt: this.runner.endsAt,
         self: this.runner.infoOf(p.id),
+        appearances: this.lookRoster(),
       });
     }
     let last = Date.now();

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { store } from "../state/store.js";
 import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
-import type { BattleStatePayload } from "@marvinho/shared";
+import type { BattleStatePayload, TokenLook } from "@marvinho/shared";
 import { drawToken } from "./pixelChar.js";
 import { PosSmoother } from "./interp.js";
 
@@ -12,6 +12,8 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
   const battle = seat.battle;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<BattleStatePayload | null>(battle?.snap ?? null);
+  const looksRef = useRef<Map<string, TokenLook>>(new Map());
+  looksRef.current = new Map((battle?.init?.appearances ?? []).map((a) => [a.id, a]));
   const keys = useRef<Set<string>>(new Set());
   const lastDir = useRef({ dx: 0, dy: 0 });
   const cursor = useRef({ x: 0, y: 0 }); // in tile coords
@@ -133,9 +135,13 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
           if (p.id === seat.playerId) meDisp = sp;
           const px = sp.x * TILE;
           const py = sp.y * TILE;
+          const look = looksRef.current.get(p.id);
           drawToken(ctx, px, py, TILE * 0.9, p.color, {
             me: p.id === seat.playerId,
             alive: p.alive,
+            hair: look?.hair,
+            hairColor: look?.hairColor,
+            mouth: look?.mouth,
           });
           ctx.globalAlpha = 1;
           ctx.fillStyle = "rgba(255,255,255,0.85)";

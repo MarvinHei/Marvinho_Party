@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { store } from "../state/store.js";
 import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
-import type { RunnerObstacle, RunnerStatePayload } from "@marvinho/shared";
-import { shadeHex, roundRect } from "./pixelChar.js";
+import type { RunnerObstacle, RunnerStatePayload, TokenLook } from "@marvinho/shared";
+import { shadeHex, roundRect, drawHair, drawMouth } from "./pixelChar.js";
 import { smoothTowards, PosSmoother } from "./interp.js";
 
 const TILE = 26;
@@ -15,7 +15,16 @@ function drawChar(
   footY: number, // vertical pixel position of the feet (rises when jumping)
   groundY: number,
   color: string,
-  opts: { ducking: boolean; airborne: boolean; isMe: boolean; phase: number; alive: boolean },
+  opts: {
+    ducking: boolean;
+    airborne: boolean;
+    isMe: boolean;
+    phase: number;
+    alive: boolean;
+    hair?: number;
+    hairColor?: string;
+    mouth?: number;
+  },
 ) {
   const { ducking, airborne, isMe, phase, alive } = opts;
   const bw = (ducking ? 1.1 : 0.82) * TILE;
@@ -63,6 +72,9 @@ function drawChar(
   roundRect(ctx, footX - bw / 2, top, bw, bh, br);
   ctx.stroke();
 
+  // Hair on the top of the head (clipped to a square at the body's top).
+  drawHair(ctx, footX, top + bw / 2, bw, opts.hair ?? 0, opts.hairColor ?? "#2b2b33");
+
   // Face: eyes (white + pupil + glint) looking forward, and a mouth.
   const eyeR = TILE * 0.12;
   const eyeY = top + bh * 0.34;
@@ -82,8 +94,8 @@ function drawChar(
     ctx.arc(ex - TILE * 0.03, eyeY - TILE * 0.03, eyeR * 0.24, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.fillStyle = "rgba(20,18,46,0.7)";
-  ctx.fillRect(footX - TILE * 0.11, top + bh * (ducking ? 0.58 : 0.64), TILE * 0.22, TILE * 0.06);
+  const mouthY = top + bh * (ducking ? 0.58 : 0.64);
+  drawMouth(ctx, footX, mouthY - bw * 0.22, bw, opts.mouth ?? 0);
 
   ctx.restore();
 }
@@ -172,6 +184,8 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
   const runner = seat.runner;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<RunnerStatePayload | null>(runner?.snap ?? null);
+  const looksRef = useRef<Map<string, TokenLook>>(new Map());
+  looksRef.current = new Map((runner?.init?.appearances ?? []).map((a) => [a.id, a]));
   const keys = useRef<Set<string>>(new Set());
   const lastState = useRef({ dir: 0, duck: false });
   const [, setTick] = useState(0);
@@ -356,12 +370,16 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
           const footX = sp.x * TILE;
           const footY = groundY - sp.y * TILE;
           const isMe = p.id === seat.playerId;
+          const look = looksRef.current.get(p.id);
           drawChar(ctx, footX, footY, groundY, p.color, {
             ducking: p.ducking,
             airborne: sp.y > 0.05,
             isMe,
             phase: phase + footX,
             alive: p.alive,
+            hair: look?.hair,
+            hairColor: look?.hairColor,
+            mouth: look?.mouth,
           });
           // Name / YOU label.
           ctx.fillStyle = "rgba(255,255,255,0.9)";

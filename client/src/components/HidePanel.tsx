@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { store } from "../state/store.js";
 import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
-import type { HideStatePayload } from "@marvinho/shared";
+import type { HideStatePayload, TokenLook } from "@marvinho/shared";
 import { drawToken, drawKnife } from "./pixelChar.js";
 import { PosSmoother } from "./interp.js";
 
@@ -14,6 +14,8 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   const hide = seat.hide;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<HideStatePayload | null>(hide?.snap ?? null);
+  const looksRef = useRef<Map<string, TokenLook>>(new Map());
+  looksRef.current = new Map((hide?.init?.appearances ?? []).map((a) => [a.id, a]));
   const keys = useRef<Set<string>>(new Set());
   const lastDir = useRef({ dx: 0, dy: 0 });
   const [, setTick] = useState(0);
@@ -141,7 +143,14 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           if (isMe) meDisp = sp;
           const px = sp.x * TILE;
           const py = sp.y * TILE;
-          drawToken(ctx, px, py, TILE * 0.86, p.color, { me: isMe, alive: !p.caught });
+          const look = looksRef.current.get(p.id);
+          drawToken(ctx, px, py, TILE * 0.86, p.color, {
+            me: isMe,
+            alive: !p.caught,
+            hair: look?.hair,
+            hairColor: look?.hairColor,
+            mouth: look?.mouth,
+          });
 
           // Seeker carries a knife; the local seeker's thrusts are animated.
           if (p.role === "seeker" && !p.caught) {
