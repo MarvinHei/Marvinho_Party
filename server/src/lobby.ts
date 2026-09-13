@@ -622,11 +622,12 @@ export class Lobby {
     const ranking = round.ranking();
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
+      const s = round.statsFor(id);
+      // Only players who solved the word advance.
+      const reward = s.solved ? rewardForRank(rank) : 0;
       rewards[id] = reward;
       const player = this.players.get(id)!;
       player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      const s = round.statsFor(id);
       const detail = s.solved
         ? `${s.guessesUsed} ${s.guessesUsed === 1 ? "guess" : "guesses"} · ${(s.timeMs / 1000).toFixed(1)}s`
         : "did not solve";
@@ -1187,13 +1188,14 @@ export class Lobby {
     const ranking = round.ranking();
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
+      const s = round.statsFor(id);
+      // Only players who actually solved the puzzle advance.
+      const reward = s.solved ? rewardForRank(rank) : 0;
       rewards[id] = reward;
       const player = this.players.get(id);
       if (player) {
         player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
       }
-      const s = round.statsFor(id);
       return {
         playerId: id,
         nickname: player?.nickname ?? "?",
@@ -1271,11 +1273,12 @@ export class Lobby {
     const ranking = round.ranking();
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
+      const s = round.statsFor(id);
+      // Only players who identified the country advance.
+      const reward = s.solved ? rewardForRank(rank) : 0;
       rewards[id] = reward;
       const player = this.players.get(id);
       if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      const s = round.statsFor(id);
       return {
         playerId: id,
         nickname: player?.nickname ?? "?",
@@ -1375,11 +1378,12 @@ export class Lobby {
     const ranking = round.ranking();
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
+      const s = round.statsFor(id);
+      // Only players who connected the two countries advance.
+      const reward = s.connected ? rewardForRank(rank) : 0;
       rewards[id] = reward;
       const player = this.players.get(id);
       if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      const s = round.statsFor(id);
       return {
         playerId: id,
         nickname: player?.nickname ?? "?",

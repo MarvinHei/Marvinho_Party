@@ -79,86 +79,24 @@ function hamiltonianPath(N: number): number[] {
   return snakePath(N);
 }
 
-/**
- * Count Hamiltonian paths (up to `cap`) that honour the numbered checkpoints:
- * start on checkpoint 1, end on checkpoint K, hitting checkpoints in order.
- * `nodeBudget` bounds the search; if hit, `exhausted` is false (uniqueness
- * unproven), which the generator treats as "not yet unique".
- */
-function countZip(
-  numbers: { index: number; value: number }[],
-  N: number,
-  nodeBudget: number,
-  cap = 2,
-): { count: number; exhausted: boolean } {
-  const total = N * N;
-  const checkpoint = new Array(total).fill(0);
-  let K = 0;
-  for (const n of numbers) { checkpoint[n.index] = n.value; K = Math.max(K, n.value); }
-  const startCell = numbers.find((n) => n.value === 1)!.index;
-  const visited = new Array(total).fill(false);
-  let count = 0, nodes = 0, budgetHit = false;
-
-  const rec = (cell: number, vcount: number, nextExpected: number): void => {
-    if (count >= cap || budgetHit) return;
-    if (++nodes > nodeBudget) { budgetHit = true; return; }
-    let ne = nextExpected;
-    const cv = checkpoint[cell];
-    if (cv !== 0) {
-      if (cv !== ne) return; // stepped on a checkpoint out of order
-      ne = cv + 1;
-    }
-    if (vcount === total) { if (ne === K + 1) count++; return; }
-    if (ne === K + 1) return; // reached the last checkpoint but cells remain
-    for (const nb of neighbors(cell, N)) {
-      if (!visited[nb]) {
-        visited[nb] = true;
-        rec(nb, vcount + 1, ne);
-        visited[nb] = false;
-        if (count >= cap || budgetHit) return;
-      }
-    }
-  };
-
-  visited[startCell] = true;
-  rec(startCell, 1, 1);
-  return { count, exhausted: !budgetHit };
-}
-
 export function genZip(difficulty: PuzzleDifficulty = "medium"): GeneratedPuzzle {
+  // Difficulty is driven by the grid SIZE, not by crowding the board with
+  // numbers. Bigger grid = harder.
   const N = difficulty === "easy" ? 5 : difficulty === "hard" ? 7 : 6;
   const path = hamiltonianPath(N);
   const total = N * N;
-  // Bounds the uniqueness search per checkpoint set (keeps generation snappy);
-  // if hit, another checkpoint is added. Larger grids inherently need more
-  // checkpoints to pin a single path.
-  const budget = 500_000;
-  // Checkpoints are chosen path-positions (always the endpoints); their value is
-  // their order along the path, so the intended path is always a solution.
-  const posSet = new Set<number>([0, total - 1]);
-  const interiorPool = shuffle(range(1, total - 1));
-  let pi = 0;
-  const initialInterior = Math.min(8, Math.max(5, Math.round(total / 6))) - 2;
-  for (let k = 0; k < initialInterior && pi < interiorPool.length; k++) posSet.add(interiorPool[pi++]);
-
-  const build = () =>
-    [...posSet].sort((a, b) => a - b).map((pos, i) => ({ index: path[pos], value: i + 1 }));
-
-  let numbers = build();
-  for (let guard = 0; guard < total; guard++) {
-    const { count, exhausted } = countZip(numbers, N, budget, 2);
-    if (exhausted && count === 1) break;
-    // Add another checkpoint to prune alternative paths.
-    while (pi < interiorPool.length && posSet.has(interiorPool[pi])) pi++;
-    if (pi < interiorPool.length) {
-      posSet.add(interiorPool[pi++]);
-    } else {
-      let added = false;
-      for (let p = 1; p < total - 1; p++) if (!posSet.has(p)) { posSet.add(p); added = true; break; }
-      if (!added) break; // every cell numbered → path is forced
-    }
-    numbers = build();
+  // Sparse checkpoints: the two endpoints plus a few interior stops evenly
+  // spread along the path. Values are their order along the path, so tracing
+  // 1→2→…→K while filling every cell always has a solution (the generated path),
+  // and the board never looks overloaded.
+  const interior = Math.max(3, N - 2); // 3 / 4 / 5 for N = 5 / 6 / 7
+  const positions = new Set<number>([0, total - 1]);
+  for (let i = 1; i <= interior; i++) {
+    positions.add(Math.round((i * (total - 1)) / (interior + 1)));
   }
+  const numbers = [...positions]
+    .sort((a, b) => a - b)
+    .map((pos, i) => ({ index: path[pos], value: i + 1 }));
   return { spec: { game: "zip", zip: { size: N, numbers } }, solution: path };
 }
 
