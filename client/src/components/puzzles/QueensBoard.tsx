@@ -28,35 +28,39 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
     if (queens.length === N && validateQueens(puzzle, queens)) onSolvedRef.current(queens);
   }, [cells, disabled, puzzle, N]);
 
-  function cycle(i: number) {
+  // A plain click toggles a queen (empty/X → queen, queen → empty).
+  function toggleQueen(i: number) {
     if (disabled) return;
     setCells((prev) => {
-      const next = (prev[i] + 1) % 3;
-      sfx(next === 2 ? "place" : "click"); // "place" when a queen goes down
+      const next = prev[i] === 2 ? 0 : 2;
+      sfx(next === 2 ? "place" : "click");
       return prev.map((v, idx) => (idx === i ? next : v));
     });
   }
 
-  // Hold left-click and drag to paint X marks across empty cells. Cells that
-  // already hold a queen (or an X) are left untouched.
+  // Hold and drag to paint X marks. The stroke's mode is set by the cell it
+  // starts on: starting on an empty cell paints X's; starting on an existing X
+  // erases them again. Queens are never touched by a drag.
   const dragging = useRef(false);
   const moved = useRef(false);
   const startCell = useRef<number | null>(null);
+  const eraseMode = useRef(false);
 
-  function paintX(i: number) {
+  function paintCell(i: number) {
     if (disabled) return;
+    const target = eraseMode.current ? 0 : 1;
     setCells((prev) => {
-      if (prev[i] !== 0) return prev; // ignore queens and existing X
+      if (prev[i] === 2 || prev[i] === target) return prev; // skip queens + no-ops
       sfx("click");
-      return prev.map((v, idx) => (idx === i ? 1 : v));
+      return prev.map((v, idx) => (idx === i ? target : v));
     });
   }
 
   useEffect(() => {
     const up = () => {
-      // A press with no drag = a plain click, which cycles the cell.
+      // A press with no drag = a plain click, which toggles a queen.
       if (dragging.current && !moved.current && startCell.current !== null) {
-        cycle(startCell.current);
+        toggleQueen(startCell.current);
       }
       dragging.current = false;
       moved.current = false;
@@ -76,11 +80,14 @@ export function QueensBoard({ puzzle, disabled, onSolved }: Props) {
   function onCellEnter(i: number) {
     if (!dragging.current) return;
     if (!moved.current) {
-      // First movement turns the gesture into a paint stroke: paint the origin.
+      // First movement turns the gesture into a stroke: erase if it began on an
+      // X, otherwise paint. Then apply to the origin cell too.
       moved.current = true;
-      if (startCell.current !== null) paintX(startCell.current);
+      const start = startCell.current;
+      eraseMode.current = start !== null && cells[start] === 1;
+      if (start !== null) paintCell(start);
     }
-    paintX(i);
+    paintCell(i);
   }
 
   // Queens that clash: share a row, column or region, or touch (incl. diagonally).

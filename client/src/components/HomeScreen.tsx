@@ -91,7 +91,12 @@ export function HomeScreen({ seat }: { seat: SeatState }) {
               />
             </div>
 
-            <button className="btn wide pink" disabled={!canPlay} onClick={create}>
+            <button
+              className="btn wide pink"
+              disabled={!canPlay || code.trim().length > 0}
+              title={code.trim().length > 0 ? "Clear the lobby code to create a new lobby" : undefined}
+              onClick={create}
+            >
               Create Lobby
             </button>
 

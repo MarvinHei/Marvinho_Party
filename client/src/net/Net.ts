@@ -136,6 +136,12 @@ export class Net {
         tetrisKos: [],
         puzzle: null,
         puzzleStandings: [],
+        // Clear the geo maps too, so the previous round's map can't flash on
+        // screen for a frame before this round's map arrives.
+        guessCountry: null,
+        geoStandings: [],
+        travle: null,
+        travleStandings: [],
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
