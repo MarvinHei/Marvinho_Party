@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { RunnerObstacle, RunnerStatePayload } from "@marvinho/shared";
 import { shadeHex, roundRect } from "./pixelChar.js";
@@ -198,6 +198,10 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 120);
     return () => clearInterval(i);
+  }, []);
+  useEffect(() => {
+    audio.startGameMusic("/audio/battle.mp3");
+    return () => audio.stopGameMusic();
   }, []);
 
   // Keyboard: arrows for run/brake/jump/duck, Space for the shockwave.

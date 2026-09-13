@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { WORLD_GEOMETRY, countryByCode, countryNames } from "@marvinho/shared";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { orthographic, orthoPath } from "../game/geoProject.js";
@@ -33,6 +33,10 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 500);
     return () => clearInterval(i);
+  }, []);
+  useEffect(() => {
+    audio.startGameMusic("/audio/guess_the_country.mp3");
+    return () => audio.stopGameMusic();
   }, []);
   useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { countryNames, type GuessCountryGuess } from "@marvinho/shared";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import { TimerTick } from "../audio/TimerTick.js";
 import type { SeatState } from "../state/types.js";
 import { silhouettePath, directionIcon } from "../game/geoProject.js";
@@ -21,6 +21,10 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 500);
     return () => clearInterval(i);
+  }, []);
+  useEffect(() => {
+    audio.startGameMusic("/audio/guess_the_country.mp3");
+    return () => audio.stopGameMusic();
   }, []);
 
   const path = useMemo(

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CardColor, CodenamesTeam } from "@marvinho/shared";
 import { store } from "../state/store.js";
+import { audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 
 const TEAM_COLOR: Record<CodenamesTeam, string> = { a: "#e6394b", b: "#3aa0ff" };
@@ -20,6 +21,11 @@ export function CodenamesPanel({ seat }: { seat: SeatState }) {
   const [clueWord, setClueWord] = useState("");
   const [clueCount, setClueCount] = useState(1);
   const net = store.net(seat.id);
+
+  useEffect(() => {
+    audio.startGameMusic("/audio/codenames.mp3");
+    return () => audio.stopGameMusic();
+  }, []);
 
   if (!cv) {
     return (

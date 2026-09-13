@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { store } from "../state/store.js";
-import { sfx } from "../audio/audio.js";
+import { sfx, audio } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { BattleStatePayload } from "@marvinho/shared";
 import { drawToken } from "./pixelChar.js";
@@ -36,6 +36,10 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
   useEffect(() => {
     const i = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(i);
+  }, []);
+  useEffect(() => {
+    audio.startGameMusic("/audio/battle.mp3");
+    return () => audio.stopGameMusic();
   }, []);
 
   // Keyboard movement.
