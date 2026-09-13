@@ -3,6 +3,7 @@ import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { BattleStatePayload } from "@marvinho/shared";
+import { drawToken } from "./pixelChar.js";
 
 const TILE = 28;
 
@@ -106,21 +107,16 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
         for (const p of s.players) {
           const px = p.x * TILE;
           const py = p.y * TILE;
-          const r = 0.42 * TILE;
-          ctx.globalAlpha = p.alive ? 1 : 0.3;
-          ctx.fillStyle = p.color;
-          ctx.beginPath();
-          ctx.arc(px, py, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = p.id === seat.playerId ? "#fff" : "#0d0b22";
-          ctx.stroke();
+          drawToken(ctx, px, py, TILE * 0.9, p.color, {
+            me: p.id === seat.playerId,
+            alive: p.alive,
+          });
           ctx.globalAlpha = 1;
           ctx.fillStyle = "rgba(255,255,255,0.85)";
           ctx.font = "10px monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
-          ctx.fillText(p.id === seat.playerId ? "YOU" : p.name, px, py - r - 2);
+          ctx.fillText(p.id === seat.playerId ? "YOU" : p.name, px, py - TILE * 0.5 - 4);
         }
         // Aim barrel from me toward the cursor.
         if (me && me.alive) {

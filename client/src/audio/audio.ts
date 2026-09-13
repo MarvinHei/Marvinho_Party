@@ -22,6 +22,9 @@ export type SfxName =
   | "place"       // puzzle "commit" (queen placed / number set)
   | "spin"        // wheel spinning
   | "countdown"   // pre-game countdown beep
+  | "bounce"      // Pong ball hits a paddle
+  | "bounceWall"  // Pong ball hits the top/bottom wall
+  | "stab"        // Verstecken knife stab
   | "win";        // game / match won
 
 interface Settings {
@@ -386,6 +389,30 @@ class AudioManager {
         break;
       case "countdown":
         this.blip(t, 660, 0.12, "sine", 0.26);
+        break;
+      case "bounce":
+        // Classic bright "pong" ping off a paddle.
+        this.blip(t, 620, 0.05, "square", 0.2);
+        break;
+      case "bounceWall":
+        // Duller, lower knock off a wall.
+        this.blip(t, 300, 0.05, "square", 0.16);
+        break;
+      case "stab":
+        // Quick knife swipe: a fast downward sweep plus a noise slash.
+        this.sweep(t, 900, 260, 0.12, 0.16);
+        if (this.noiseBuffer) {
+          const src = ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+          const ng = ctx.createGain();
+          const filt = ctx.createBiquadFilter();
+          filt.type = "highpass";
+          filt.frequency.value = 1400;
+          this.env(ng, t, 0.09, 0.12);
+          src.connect(filt).connect(ng).connect(this.sfxGain!);
+          src.start(t);
+          src.stop(t + 0.1);
+        }
         break;
       case "win":
         this.arpeggio(t, [523.25, 659.25, 783.99, 1046.5], 0.12, 0.3);

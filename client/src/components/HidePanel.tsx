@@ -3,9 +3,11 @@ import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { HideStatePayload } from "@marvinho/shared";
+import { drawToken, drawKnife } from "./pixelChar.js";
 
 const TILE = 28;
 const VISION = 7; // must match the server
+const STAB_MS = 300; // knife-thrust animation length
 
 export function HidePanel({ seat }: { seat: SeatState }) {
   const hide = seat.hide;
@@ -15,6 +17,9 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   const lastDir = useRef({ dx: 0, dy: 0 });
   const [, setTick] = useState(0);
   const caughtRef = useRef(false);
+  // Local seeker aim + knife-stab animation (cursor is in tile coords).
+  const cursor = useRef({ x: 0, y: 0 });
+  const stab = useRef({ at: -1, angle: 0 });
 
   const init = hide?.init;
   const isSeeker = init?.role === "seeker";
@@ -104,34 +109,37 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         }
       }
       const me = s?.players.find((p) => p.id === seat.playerId) ?? null;
-      // Players.
+      const now = performance.now();
+      // Players — the same pixel characters as on the board.
       if (s) {
         for (const p of s.players) {
           const px = p.x * TILE;
           const py = p.y * TILE;
-          const r = 0.4 * TILE;
-          ctx.globalAlpha = p.caught ? 0.35 : 1;
-          ctx.fillStyle = p.role === "seeker" ? "#e6394b" : p.color;
-          ctx.beginPath();
-          ctx.arc(px, py, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = p.id === seat.playerId ? "#fff" : "#0d0b22";
-          ctx.stroke();
-          if (p.role === "seeker") {
-            ctx.fillStyle = "#fff";
-            ctx.font = `${TILE * 0.6}px serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🔪", px, py - r - 6);
+          const isMe = p.id === seat.playerId;
+          drawToken(ctx, px, py, TILE * 0.86, p.color, { me: isMe, alive: !p.caught });
+
+          // Seeker carries a knife; the local seeker's thrusts are animated.
+          if (p.role === "seeker" && !p.caught) {
+            let angle = isMe ? Math.atan2(cursor.current.y - p.y, cursor.current.x - p.x) : 0;
+            let reach = TILE * 0.5;
+            if (isMe && stab.current.at >= 0) {
+              const prog = (now - stab.current.at) / STAB_MS;
+              if (prog <= 1) {
+                angle = stab.current.angle;
+                reach += Math.sin(prog * Math.PI) * TILE * 0.9; // thrust out and back
+              }
+            }
+            ctx.globalAlpha = p.caught ? 0.35 : 1;
+            drawKnife(ctx, px, py, angle, reach, TILE * 0.7);
+            ctx.globalAlpha = 1;
           }
-          ctx.globalAlpha = 1;
+
           // Name.
           ctx.fillStyle = "rgba(255,255,255,0.85)";
           ctx.font = "10px monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
-          ctx.fillText(p.id === seat.playerId ? "YOU" : p.name, px, py - r - 2);
+          ctx.fillText(isMe ? "YOU" : p.name, px, py - TILE * 0.48 - 2);
         }
       }
       // Seeker fog: darken beyond the vision radius.
@@ -151,10 +159,20 @@ export function HidePanel({ seat }: { seat: SeatState }) {
     return () => cancelAnimationFrame(raf);
   }, [cols, rows, walls, isSeeker, seat.playerId]);
 
-  function onClick() {
+  function toTile(e: React.PointerEvent<HTMLCanvasElement>) {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    cursor.current = {
+      x: ((e.clientX - rect.left) / rect.width) * cols,
+      y: ((e.clientY - rect.top) / rect.height) * rows,
+    };
+  }
+  function onStab(e: React.PointerEvent<HTMLCanvasElement>) {
+    toTile(e);
     if (isSeeker && snapRef.current?.released) {
+      const me = snapRef.current.players.find((p) => p.id === seat.playerId);
+      if (me) stab.current = { at: performance.now(), angle: Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x) };
       store.net(seat.id)?.hideStab();
-      sfx("place");
+      sfx("stab");
     }
   }
 
@@ -180,7 +198,8 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           width={cols * TILE}
           height={rows * TILE}
           className="hide-canvas"
-          onPointerDown={onClick}
+          onPointerMove={toTile}
+          onPointerDown={onStab}
         />
         {releaseIn > 0 && (
           <div className="hide-banner">

@@ -21,6 +21,10 @@ export function PongPanel({ seat }: { seat: SeatState }) {
   const [over, setOver] = useState<{ won: boolean } | null>(null);
   const lastScore = useRef({ l: 0, r: 0 });
   const lastSent = useRef(0);
+  // Impact particles + previous ball sample (to detect paddle/wall bounces).
+  const particles = useRef<Particle[]>([]);
+  const prevBall = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  const lastT = useRef(performance.now());
 
   const side = pong?.init.side ?? "left";
 
@@ -44,8 +48,26 @@ export function PongPanel({ seat }: { seat: SeatState }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
+    const spawnBurst = (x: number, y: number, color: string) => {
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 60 + Math.random() * 200;
+        particles.current.push({
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: 0.5,
+          max: 0.5,
+          color,
+          size: 2 + Math.random() * 3,
+        });
+      }
+    };
     const draw = () => {
       const s = snapRef.current;
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastT.current) / 1000);
+      lastT.current = now;
       ctx.fillStyle = "#0c0a20";
       ctx.fillRect(0, 0, W, H);
       // Center dashed line.
@@ -67,6 +89,32 @@ export function PongPanel({ seat }: { seat: SeatState }) {
       drawPaddle(ctx, PAD_X_L * W, padL * H, colL);
       drawPaddle(ctx, PAD_X_R * W, padR * H, colR);
 
+      // Detect bounces by watching the ball's velocity flip sign near an edge,
+      // and spew particles + play a beep on each hit.
+      if (s) {
+        const pb = prevBall.current;
+        if (pb) {
+          const dx = s.ballX - pb.x;
+          const dy = s.ballY - pb.y;
+          if (dx !== 0 || dy !== 0) {
+            // Ignore big jumps (a point reset re-centers the ball).
+            if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) {
+              if (pb.vx !== 0 && Math.sign(dx) !== Math.sign(pb.vx) && (s.ballX < 0.14 || s.ballX > 0.86)) {
+                spawnBurst(s.ballX * W, s.ballY * H, s.ballX < 0.5 ? colL : colR);
+                sfx("bounce");
+              }
+              if (pb.vy !== 0 && Math.sign(dy) !== Math.sign(pb.vy) && (s.ballY < 0.06 || s.ballY > 0.94)) {
+                spawnBurst(s.ballX * W, s.ballY * H, "#dfe6ff");
+                sfx("bounceWall");
+              }
+            }
+            prevBall.current = { x: s.ballX, y: s.ballY, vx: dx !== 0 ? dx : pb.vx, vy: dy !== 0 ? dy : pb.vy };
+          }
+        } else {
+          prevBall.current = { x: s.ballX, y: s.ballY, vx: 0, vy: 0 };
+        }
+      }
+
       // Ball.
       if (s) {
         ctx.fillStyle = "#fff";
@@ -74,6 +122,24 @@ export function PongPanel({ seat }: { seat: SeatState }) {
         ctx.arc(s.ballX * W, s.ballY * H, BALL_R * H, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      // Impact particles.
+      const survivors: Particle[] = [];
+      for (const pt of particles.current) {
+        pt.life -= dt;
+        if (pt.life <= 0) continue;
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.vx *= 0.98;
+        pt.vy *= 0.98;
+        ctx.globalAlpha = Math.max(0, pt.life / pt.max);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
+        survivors.push(pt);
+      }
+      ctx.globalAlpha = 1;
+      particles.current = survivors;
+
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
@@ -127,6 +193,17 @@ export function PongPanel({ seat }: { seat: SeatState }) {
       <div className="pong-hint pixel">First to {pong.init.target} — move the mouse to steer your paddle</div>
     </div>
   );
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  max: number;
+  color: string;
+  size: number;
 }
 
 function drawPaddle(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {

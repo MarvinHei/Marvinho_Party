@@ -3,38 +3,9 @@ import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { RunnerObstacle, RunnerStatePayload } from "@marvinho/shared";
+import { shadeHex, roundRect } from "./pixelChar.js";
 
 const TILE = 26;
-
-/** Lighten (amt>0) or darken (amt<0) a #rrggbb color; returns #rrggbb. */
-function shadeHex(hex: string, amt: number): string {
-  const c = hex.replace("#", "");
-  let r = parseInt(c.slice(0, 2), 16);
-  let g = parseInt(c.slice(2, 4), 16);
-  let b = parseInt(c.slice(4, 6), 16);
-  if (amt >= 0) {
-    r += (255 - r) * amt;
-    g += (255 - g) * amt;
-    b += (255 - b) * amt;
-  } else {
-    r *= 1 + amt;
-    g *= 1 + amt;
-    b *= 1 + amt;
-  }
-  const h = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
-  return `#${h(r)}${h(g)}${h(b)}`;
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
-}
 
 /** Draws a board-style pixel character (matching the board tokens). */
 function drawChar(
