@@ -45,7 +45,6 @@ export function LobbyBackdrop() {
     let raf = 0;
     const frame = () => {
       const now = performance.now();
-      const t = (now - start) / 1000;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -58,12 +57,9 @@ export function LobbyBackdrop() {
       const cy = h * 0.42;
       const gap = eyeR * 1.7;
       const cx = w * 0.5;
-      // Blink roughly every 3.6s (a quick double-blink).
-      const bc = t % 3.6;
-      const blink = !reduce && (bc < 0.13 || (bc > 0.2 && bc < 0.31)) ? 1 : 0;
-
-      drawEye(ctx, cx - gap, cy, eyeR, look.x, look.y, blink);
-      drawEye(ctx, cx + gap, cy, eyeR, look.x, look.y, blink);
+      // No blink here — the lobby eyes just track the cursor, always open.
+      drawEye(ctx, cx - gap, cy, eyeR, look.x, look.y, 0);
+      drawEye(ctx, cx + gap, cy, eyeR, look.x, look.y, 0);
 
       raf = requestAnimationFrame(frame);
     };
