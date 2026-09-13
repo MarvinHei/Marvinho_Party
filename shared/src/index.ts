@@ -187,7 +187,8 @@ export type MinigameType =
   | "guesscountry"
   | "travle"
   | "pong"
-  | "verstecken";
+  | "verstecken"
+  | "battle";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -205,6 +206,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   travle: "Travle",
   pong: "Pong",
   verstecken: "Verstecken",
+  battle: "Battle Royale",
 };
 
 // ---------------------------------------------------------------------------
@@ -255,6 +257,7 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   travle: 180,
   pong: 120,
   verstecken: 150,
+  battle: 150,
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -769,6 +772,40 @@ export interface HideStatePayload {
 }
 
 // ---------------------------------------------------------------------------
+// Battle Royale (real-time top-down shooter on a shared map)
+// ---------------------------------------------------------------------------
+
+export interface BattleInitPayload {
+  cols: number;
+  rows: number;
+  walls: string;
+  endsAt: number;
+  self: { name: string; color: string };
+}
+
+export interface BattleDot {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  name: string;
+  alive: boolean;
+}
+
+export interface BattleBullet {
+  x: number;
+  y: number;
+}
+
+export interface BattleStatePayload {
+  players: BattleDot[];
+  bullets: BattleBullet[];
+  alive: number;
+  meAlive: boolean;
+  msLeft: number;
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -902,6 +939,11 @@ export interface ClientToServerEvents {
   "hide:move": (payload: { dx: number; dy: number }) => void;
   /** Verstecken — the seeker attempts a catch (dagger stab). */
   "hide:stab": () => void;
+
+  /** Battle Royale — set this player's movement direction (each -1..1). */
+  "battle:move": (payload: { dx: number; dy: number }) => void;
+  /** Battle Royale — fire a shot in the given aim angle (radians). */
+  "battle:shoot": (payload: { angle: number }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -1009,6 +1051,11 @@ export interface ServerToClientEvents {
   "hide:init": (payload: HideInitPayload) => void;
   /** Verstecken — a per-viewer snapshot (~20/s). */
   "hide:state": (payload: HideStatePayload) => void;
+
+  /** Battle Royale — the map. */
+  "battle:init": (payload: BattleInitPayload) => void;
+  /** Battle Royale — a snapshot of players + bullets (~30/s). */
+  "battle:state": (payload: BattleStatePayload) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;

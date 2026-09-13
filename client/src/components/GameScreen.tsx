@@ -15,6 +15,7 @@ import { GuessCountryPanel } from "./GuessCountryPanel.js";
 import { TravlePanel } from "./TravlePanel.js";
 import { PongPanel } from "./PongPanel.js";
 import { HidePanel } from "./HidePanel.js";
+import { BattlePanel } from "./BattlePanel.js";
 import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -113,6 +114,13 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     return (
       <div className="game-wrap">
         <HidePanel seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "battle" && seat.battle) {
+    return (
+      <div className="game-wrap">
+        <BattlePanel seat={seat} />
       </div>
     );
   }

@@ -15,10 +15,11 @@ export const PRACTICE_ICON: Record<MinigameType, string> = {
   travle: "🧭",
   pong: "🏓",
   verstecken: "🫥",
+  battle: "🔫",
 };
 
 export const PRACTICE_ORDER: MinigameType[] = [
   "wordle", "zip", "queens", "sudoku", "tango", "skribbl",
   "skribblteams", "findword", "tetris", "codenames",
-  "guesscountry", "travle", "pong", "verstecken",
+  "guesscountry", "travle", "pong", "verstecken", "battle",
 ];

@@ -15,6 +15,7 @@ export const GAME_ICON: Record<MinigameType, string> = {
   travle: "🧭",
   pong: "🏓",
   verstecken: "🫥",
+  battle: "🔫",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -32,6 +33,7 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   travle: "#28e0d0",
   pong: "#ffd23f",
   verstecken: "#b06bff",
+  battle: "#ff8c42",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -154,6 +156,14 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "Move with WASD / arrow keys around the map.",
       "Hiders get a head start to find cover; then the seeker is released.",
       "The seeker only sees nearby hiders and catches them with a click (stab).",
+    ],
+  },
+  battle: {
+    tagline: "Free-for-all shootout — last one standing wins.",
+    rules: [
+      "Move with WASD / arrow keys; aim with the mouse.",
+      "Click to fire your pistol — one hit eliminates a player.",
+      "Use the walls for cover. Outlast everyone to win.",
     ],
   },
 };

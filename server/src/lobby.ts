@@ -49,6 +49,7 @@ import { GuessCountryRound } from "./minigames/guessCountry.js";
 import { TravleRound } from "./minigames/travle.js";
 import { PongRound } from "./minigames/pong.js";
 import { HideRound } from "./minigames/verstecken.js";
+import { BattleRound } from "./minigames/battle.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -107,6 +108,7 @@ export class Lobby {
   private travle: TravleRound | null = null;
   private pong: PongRound | null = null;
   private hide: HideRound | null = null;
+  private battle: BattleRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
@@ -385,6 +387,8 @@ export class Lobby {
     if (n >= 2) games.push("pong");
     // Verstecken: one seeker + at least two hiders.
     if (n >= 3) games.push("verstecken");
+    // Battle Royale: a free-for-all with at least three players.
+    if (n >= 3) games.push("battle");
     // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
     if (canFormTeams(n)) {
       games.push("skribblteams");
@@ -504,6 +508,7 @@ export class Lobby {
       else if (game === "travle") this.startTravle();
       else if (game === "pong") this.startPong();
       else if (game === "verstecken") this.startVerstecken();
+      else if (game === "battle") this.startBattle();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -1580,6 +1585,83 @@ export class Lobby {
     });
 
     this.concludeMinigame({ type: "verstecken", ranking, rewards, scoreboard });
+  }
+
+  // --- battle royale ------------------------------------------------------
+
+  private startBattle(): void {
+    const players = this.connectedPlayers().map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      color: p.color,
+    }));
+    this.phase = "minigame";
+    this.currentMinigame = "battle";
+    const roundMs = this.roundSecondsFor("battle") * 1000;
+    this.battle = new BattleRound(players, roundMs);
+    this.io.to(this.id).emit("minigame:start", { type: "battle" });
+    const walls = this.battle.encodedWalls();
+    for (const p of this.connectedPlayers()) {
+      if (!p.socketId) continue;
+      this.io.to(p.socketId).emit("battle:init", {
+        cols: this.battle.arena.cols,
+        rows: this.battle.arena.rows,
+        walls,
+        endsAt: this.battle.endsAt,
+        self: this.battle.infoOf(p.id),
+      });
+    }
+    let last = Date.now();
+    this.interval = setInterval(() => {
+      if (!this.battle) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      this.battle.tick(dt);
+      for (const p of this.connectedPlayers()) {
+        if (p.socketId) this.io.to(p.socketId).emit("battle:state", this.battle.stateFor(p.id));
+      }
+      if (this.battle.isComplete()) this.endBattle();
+    }, 33); // 30 Hz
+    this.schedule(() => {
+      if (this.battle) this.endBattle();
+    }, roundMs);
+  }
+
+  handleBattleMove(playerId: string, dx: number, dy: number): void {
+    if (this.phase === "minigame") this.battle?.setMove(playerId, dx, dy);
+  }
+
+  handleBattleShoot(playerId: string, angle: number): void {
+    if (this.phase === "minigame") this.battle?.shoot(playerId, angle);
+  }
+
+  private endBattle(): void {
+    if (!this.battle) return;
+    const round = this.battle;
+    this.battle = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const s = round.statsFor(id);
+      const reward = rewardForRank(rank);
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0 && s.survived,
+        detail: s.survived ? "last one standing" : `#${s.placement} out`,
+      };
+    });
+
+    this.concludeMinigame({ type: "battle", ranking, rewards, scoreboard });
   }
 
   // --- shared minigame conclusion ----------------------------------------

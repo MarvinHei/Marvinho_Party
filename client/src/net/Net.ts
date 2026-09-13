@@ -144,6 +144,7 @@ export class Net {
         travleStandings: [],
         pong: null,
         hide: null,
+        battle: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -297,6 +298,19 @@ export class Net {
 
     this.socket.on("hide:state", (snap) => {
       this.patch((prev) => (prev.hide ? { hide: { ...prev.hide, snap } } : {}));
+    });
+
+    this.socket.on("battle:init", (init) => {
+      this.patch({
+        screen: "game",
+        minigame: "battle",
+        minigamePhase: "playing",
+        battle: { init, snap: null },
+      });
+    });
+
+    this.socket.on("battle:state", (snap) => {
+      this.patch((prev) => (prev.battle ? { battle: { ...prev.battle, snap } } : {}));
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -503,6 +517,16 @@ export class Net {
   /** Verstecken — seeker stab (attempt a catch). */
   hideStab() {
     this.socket.emit("hide:stab");
+  }
+
+  /** Battle Royale — send this player's movement direction. */
+  battleMove(dx: number, dy: number) {
+    this.socket.emit("battle:move", { dx, dy });
+  }
+
+  /** Battle Royale — fire a shot at the given aim angle (radians). */
+  battleShoot(angle: number) {
+    this.socket.emit("battle:shoot", { angle });
   }
 
   leave() {

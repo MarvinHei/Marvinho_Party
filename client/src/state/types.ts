@@ -10,6 +10,8 @@ import type {
   PuzzleGame,
   TeamDraftTeam,
   PuzzleSpec,
+  BattleInitPayload,
+  BattleStatePayload,
   HideInitPayload,
   HideStatePayload,
   PongInitPayload,
@@ -67,6 +69,11 @@ export interface PongClientState {
 export interface HideClientState {
   init: HideInitPayload;
   snap: HideStatePayload | null;
+}
+
+export interface BattleClientState {
+  init: BattleInitPayload;
+  snap: BattleStatePayload | null;
 }
 
 export type Screen = "home" | "lobby" | "game";
@@ -141,6 +148,7 @@ export interface SeatState {
   travleStandings: TravleStanding[];
   pong: PongClientState | null;
   hide: HideClientState | null;
+  battle: BattleClientState | null;
 }
 
 export interface StoreSnapshot {
@@ -186,5 +194,6 @@ export function initialSeat(id: string, label: string): SeatState {
     travleStandings: [],
     pong: null,
     hide: null,
+    battle: null,
   };
 }

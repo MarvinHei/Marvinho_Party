@@ -290,6 +290,16 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleHideStab(session.playerId);
   });
 
+  socket.on("battle:move", ({ dx, dy }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleBattleMove(session.playerId, dx, dy);
+  });
+
+  socket.on("battle:shoot", ({ angle }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleBattleShoot(session.playerId, angle);
+  });
+
   socket.on("lobby:debugStart", ({ game }, ack) => {
     try {
       if (!DEBUG_ENABLED) throw new Error("Debug mode is disabled.");
