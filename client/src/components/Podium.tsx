@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import type { MinigameResult, ScoreRow, TeamScore } from "@marvinho/shared";
+import type { Appearance, MinigameResult, ScoreRow, TeamScore } from "@marvinho/shared";
 import { sfx } from "../audio/audio.js";
 import { store } from "../state/store.js";
 import type { SeatState } from "../state/types.js";
+import { TokenAvatar } from "./TokenAvatar.js";
 
 /** Host confirms the podium; others wait. Releases the board advance. */
 function ResultsConfirm({ seat }: { seat: SeatState }) {
@@ -33,22 +34,7 @@ function ResultsConfirm({ seat }: { seat: SeatState }) {
 const MEDALS = ["🥇", "🥈", "🥉"];
 const HEIGHTS = [186, 146, 116];
 
-/** The same pixel character that races on the board, drawn in CSS so it can sit
- *  on the podium. */
-function CharAvatar({ color, size }: { color: string; size: number }) {
-  return (
-    <div className="pod-char" style={{ width: size, height: size }}>
-      <div className="pod-char-body" style={{ background: color }}>
-        <span className="pod-char-belly" />
-        <span className="pod-char-eye left"><i /></span>
-        <span className="pod-char-eye right"><i /></span>
-        <span className="pod-char-mouth" />
-      </div>
-    </div>
-  );
-}
-
-function Column({ row, spot }: { row: ScoreRow; spot: number }) {
+function Column({ row, spot, appearance }: { row: ScoreRow; spot: number; appearance: Appearance }) {
   // Reveal 3rd → 2nd → 1st for drama.
   const delay = 0.15 + (2 - row.rank) * 0.4;
   return (
@@ -69,7 +55,7 @@ function Column({ row, spot }: { row: ScoreRow; spot: number }) {
         </div>
       )}
       <div className="pod-medal">{MEDALS[row.rank] ?? `#${row.rank + 1}`}</div>
-      <CharAvatar color={row.color} size={spot === 1 ? 74 : 60} />
+      <TokenAvatar appearance={appearance} size={spot === 1 ? 78 : 64} />
       <div className="pod-name">{row.nickname}</div>
       <div
         className="pod-block"
@@ -158,7 +144,19 @@ export function Podium({ result, seat }: { result: MinigameResult; seat: SeatSta
 
         <div className="podium">
           {order.map((row) => (
-            <Column key={row.playerId} row={row} spot={row.rank} />
+            <Column
+              key={row.playerId}
+              row={row}
+              spot={row.rank}
+              appearance={
+                seat.lobby?.players.find((p) => p.id === row.playerId)?.appearance ?? {
+                  color: row.color,
+                  hair: 0,
+                  hairColor: "#2b2b33",
+                  mouth: 1,
+                }
+              }
+            />
           ))}
         </div>
 

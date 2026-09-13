@@ -1,5 +1,4 @@
 import {
-  HAIR_COLORS,
   HAIR_STYLES,
   MOUTH_STYLES,
   PLAYER_COLORS,
@@ -12,12 +11,12 @@ const KEY = "marvinho.appearance";
 
 const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-/** A fully random character look. */
+/** A random character look. Hair is always black. */
 export function randomAppearance(): Appearance {
   return {
     color: pick(PLAYER_COLORS),
     hair: Math.floor(Math.random() * HAIR_STYLES),
-    hairColor: pick(HAIR_COLORS),
+    hairColor: "#2b2b33",
     mouth: Math.floor(Math.random() * MOUTH_STYLES),
   };
 }

@@ -156,6 +156,11 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     color: p.color,
     position: rewards ? Math.max(0, p.position - (rewards[p.id] ?? 0)) : p.position,
     ready: p.ready,
+    appearance: {
+      hair: p.appearance.hair,
+      hairColor: p.appearance.hairColor,
+      mouth: p.appearance.mouth,
+    },
   }));
 
   const spinning = seat.minigamePhase === "spinning" && !!seat.wheel;

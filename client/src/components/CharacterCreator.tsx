@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  HAIR_COLORS,
   HAIR_STYLES,
   MOUTH_STYLES,
   PLAYER_COLORS,
@@ -93,24 +92,6 @@ export function CharacterCreator({
             <button type="button" onClick={() => set({ hair: cycle(value.hair, HAIR_STYLES, 1) })} aria-label="Next hair">▶</button>
           </div>
         </div>
-
-        {value.hair > 0 && (
-          <div className="cc-row">
-            <span className="cc-label">Hair colour</span>
-            <div className="cc-swatches">
-              {HAIR_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`cc-swatch${value.hairColor === c ? " on" : ""}`}
-                  style={{ background: c }}
-                  onClick={() => set({ hairColor: c })}
-                  aria-label={`Hair colour ${c}`}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
         <div className="cc-row">
           <span className="cc-label">Mouth</span>

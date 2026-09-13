@@ -6,6 +6,7 @@ export interface BoardPlayer {
   color: string;
   position: number;
   ready: boolean;
+  appearance?: { hair: number; hairColor: string; mouth: number };
 }
 
 export interface BoardState {
@@ -35,6 +36,93 @@ function shade(hex: string, amount: number): number {
   if (amount >= 0) c.lighten(amount * 100);
   else c.darken(-amount * 100);
   return c.color;
+}
+
+/** Draws the character's hair, matching the canvas token styles, on the head. */
+function drawBoardHair(g: Phaser.GameObjects.Graphics, size: number, style: number, hairColor: string) {
+  if (!style || style <= 0) return;
+  const bw = size;
+  const bh = size;
+  const br = size * 0.34;
+  const L = -bw / 2;
+  const top = -bh / 2;
+  g.fillStyle(toNum(hairColor), 1);
+  // A rounded-top band, so hair hugs the head's rounded top corners.
+  const band = (h: number) => g.fillRoundedRect(L, top, bw, h, { tl: br, tr: br, bl: 0, br: 0 });
+  switch (style) {
+    case 1: // short
+      band(bh * 0.33);
+      break;
+    case 3: // bowl
+      band(bh * 0.4);
+      break;
+    case 4: // mohawk (central strip)
+      g.fillRoundedRect(-bw * 0.11, top, bw * 0.22, bh * 0.5, { tl: bw * 0.11, tr: bw * 0.11, bl: 0, br: 0 });
+      break;
+    case 2: { // spiky (band + downward triangles)
+      band(bh * 0.24);
+      const n = 6;
+      const y0 = top + bh * 0.24;
+      for (let i = 0; i < n; i++) {
+        const x = L + (i + 0.5) * (bw / n);
+        g.fillTriangle(x - bw / n / 2, y0, x, y0 + bh * 0.14, x + bw / n / 2, y0);
+      }
+      break;
+    }
+    case 5: { // afro (band + scalloped hairline)
+      band(bh * 0.28);
+      const y0 = top + bh * 0.28;
+      for (let i = 0; i <= 5; i++) g.fillCircle(L + bw * 0.06 + i * (bw * 0.88 / 5), y0, bw * 0.1);
+      break;
+    }
+    case 6: // side swoop (chamfered top, diagonal hairline)
+      g.fillPoints(
+        [
+          new Phaser.Geom.Point(L, top + br),
+          new Phaser.Geom.Point(L + br, top),
+          new Phaser.Geom.Point(L + bw - br, top),
+          new Phaser.Geom.Point(L + bw, top + br),
+          new Phaser.Geom.Point(L + bw, top + bh * 0.2),
+          new Phaser.Geom.Point(L, top + bh * 0.46),
+        ],
+        true,
+      );
+      break;
+  }
+}
+
+/** Draws the character's mouth in the chosen style. */
+function drawBoardMouth(g: Phaser.GameObjects.Graphics, size: number, style: number) {
+  const my = size * 0.2;
+  const dark = 0x14122e;
+  switch (style) {
+    case 1: // smile
+      g.lineStyle(Math.max(2, size * 0.06), dark, 1);
+      g.beginPath();
+      g.arc(0, my - size * 0.04, size * 0.15, Phaser.Math.DegToRad(25), Phaser.Math.DegToRad(155));
+      g.strokePath();
+      break;
+    case 2: // open oval
+      g.fillStyle(dark, 1);
+      g.fillEllipse(0, my, size * 0.18, size * 0.16);
+      break;
+    case 3: // grin
+      g.fillStyle(dark, 1);
+      g.fillEllipse(0, my, size * 0.32, size * 0.2);
+      g.lineStyle(Math.max(1, size * 0.03), 0xffffff, 1);
+      g.beginPath();
+      g.moveTo(-size * 0.14, my - size * 0.01);
+      g.lineTo(size * 0.14, my - size * 0.01);
+      g.strokePath();
+      break;
+    case 4: // small o
+      g.fillStyle(dark, 1);
+      g.fillCircle(0, my, size * 0.055);
+      break;
+    default: // neutral line
+      g.fillStyle(dark, 0.75);
+      g.fillRect(-size * 0.11, my - size * 0.025, size * 0.22, size * 0.05);
+  }
 }
 
 // Remembers each player's last rendered board tile ACROSS board remounts (the
@@ -331,16 +419,21 @@ export class BoardScene extends Phaser.Scene {
       const eye = this.add.container(ex, -size * 0.06, [white, pupil, glint]);
       return eye;
     };
+    // Hair (drawn to hug the rounded head) and a mouth in the chosen style.
+    const hairG = this.add.graphics();
+    drawBoardHair(hairG, size, player.appearance?.hair ?? 0, player.appearance?.hairColor ?? "#2b2b33");
+
     const eyeL = makeEye(-size * 0.18);
     const eyeR = makeEye(size * 0.18);
-    const mouth = this.add.rectangle(0, size * 0.2, size * 0.22, size * 0.05, 0x14122e).setAlpha(0.7);
+    const mouth = this.add.graphics();
+    drawBoardMouth(mouth, size, player.appearance?.mouth ?? 0);
 
     const crown = this.add
       .text(0, -size * 0.74, "👑", { fontSize: `${Math.max(12, Math.floor(size * 0.44))}px` })
       .setOrigin(0.5)
       .setVisible(false);
 
-    const avatar = this.add.container(0, 0, [g, eyeL, eyeR, mouth, crown]);
+    const avatar = this.add.container(0, 0, [g, hairG, eyeL, eyeR, mouth, crown]);
 
     // Ready badge (green circle + drawn check) at the top-right.
     const badgeBg = this.add.circle(0, 0, size * 0.22, 0x42d17a).setStrokeStyle(2, 0x0d0b22);
