@@ -5,11 +5,17 @@ import { sfx } from "../audio/audio.js";
 const MEDALS = ["🥇", "🥈", "🥉"];
 const HEIGHTS = [132, 102, 80];
 
+/** The same pixel character that races on the board, drawn in CSS so it can sit
+ *  on the podium. */
 function CharAvatar({ color, size }: { color: string; size: number }) {
   return (
-    <div className="char" style={{ width: size, height: size, background: color }}>
-      <span className="char-eye" style={{ left: size * 0.26 }} />
-      <span className="char-eye" style={{ right: size * 0.26 }} />
+    <div className="pod-char" style={{ width: size, height: size }}>
+      <div className="pod-char-body" style={{ background: color }}>
+        <span className="pod-char-belly" />
+        <span className="pod-char-eye left"><i /></span>
+        <span className="pod-char-eye right"><i /></span>
+        <span className="pod-char-mouth" />
+      </div>
     </div>
   );
 }

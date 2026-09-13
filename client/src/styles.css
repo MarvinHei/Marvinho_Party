@@ -701,24 +701,59 @@ input[type="text"]:focus {
 }
 
 /* CSS pixel character avatar */
-.char {
-  position: relative;
-  border-radius: 34%;
-  border: 3px solid #0d0b22;
-  box-shadow: inset 0 6px 0 rgba(255, 255, 255, 0.28), 0 3px 0 rgba(0, 0, 0, 0.4);
-  animation: charBob 1.5s ease-in-out infinite;
-}
 @keyframes charBob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
 }
-.char-eye {
+/* Podium character — the same figure that races on the board, in CSS. */
+.pod-char {
+  position: relative;
+  animation: charBob 1.5s ease-in-out infinite;
+}
+.pod-char-body {
   position: absolute;
-  top: 38%;
-  width: 18%;
-  height: 18%;
+  inset: 0;
+  border-radius: 34%;
+  border: 3px solid #0d0b22;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.28), 0 3px 0 rgba(0, 0, 0, 0.4);
+}
+.pod-char-belly {
+  position: absolute;
+  left: 16%;
+  top: 12%;
+  width: 68%;
+  height: 34%;
+  border-radius: 40%;
+  background: rgba(255, 255, 255, 0.4);
+}
+.pod-char-eye {
+  position: absolute;
+  top: 34%;
+  width: 26%;
+  height: 26%;
+  background: #fff;
+  border-radius: 50%;
+}
+.pod-char-eye.left { left: 18%; }
+.pod-char-eye.right { right: 18%; }
+.pod-char-eye i {
+  position: absolute;
+  left: 42%;
+  top: 42%;
+  width: 42%;
+  height: 42%;
   background: #14122e;
   border-radius: 50%;
+}
+.pod-char-mouth {
+  position: absolute;
+  left: 39%;
+  top: 66%;
+  width: 22%;
+  height: 6%;
+  background: #14122e;
+  border-radius: 3px;
+  opacity: 0.75;
 }
 
 /* ---- Ready bar ---- */
