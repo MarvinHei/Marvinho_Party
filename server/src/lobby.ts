@@ -1496,7 +1496,8 @@ export class Lobby {
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
       const s = round.statsFor(id);
-      const reward = s.won ? 3 : 1;
+      // Winners take 2 tiles, losers none.
+      const reward = s.won ? 2 : 0;
       rewards[id] = reward;
       const player = this.players.get(id);
       if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
@@ -1573,20 +1574,25 @@ export class Lobby {
     this.clearTimers();
 
     const ranking = round.ranking();
+    const stats = new Map(ranking.map((id) => [id, round.statsFor(id)]));
+    // If any hider makes it to the end, the hiders win: everyone but the seeker
+    // gets 1 tile. If the seeker catches them all, the seeker takes 2 and the
+    // hiders get nothing.
+    const anySurvived = [...stats.values()].some((s) => s.role !== "seeker" && s.survived);
     const rewards: Record<string, number> = {};
     const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
+      const s = stats.get(id)!;
       let reward: number;
+      let win: boolean;
       let detail: string;
       if (s.role === "seeker") {
-        reward = Math.min(4, 1 + s.catches);
-        detail = `seeker · caught ${s.catches}`;
-      } else if (s.survived) {
-        reward = 3;
-        detail = "survived!";
+        reward = anySurvived ? 0 : 2;
+        win = !anySurvived;
+        detail = anySurvived ? `seeker · caught ${s.catches}` : `caught everyone! · ${s.catches}`;
       } else {
-        reward = 1;
-        detail = `caught after ${(s.survivedMs / 1000).toFixed(0)}s`;
+        reward = anySurvived ? 1 : 0;
+        win = anySurvived;
+        detail = s.survived ? "survived!" : `caught after ${(s.survivedMs / 1000).toFixed(0)}s`;
       }
       rewards[id] = reward;
       const player = this.players.get(id);
@@ -1597,7 +1603,7 @@ export class Lobby {
         color: player?.color ?? "#888",
         rank,
         reward,
-        win: rank === 0,
+        win,
         detail,
       };
     });
