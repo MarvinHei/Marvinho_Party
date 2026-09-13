@@ -186,7 +186,8 @@ export type MinigameType =
   | "tango"
   | "guesscountry"
   | "travle"
-  | "pong";
+  | "pong"
+  | "verstecken";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -203,6 +204,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   guesscountry: "Guess the Country",
   travle: "Travle",
   pong: "Pong",
+  verstecken: "Verstecken",
 };
 
 // ---------------------------------------------------------------------------
@@ -252,6 +254,7 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   guesscountry: 120,
   travle: 180,
   pong: 120,
+  verstecken: 150,
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -729,6 +732,43 @@ export interface PongStatePayload {
 }
 
 // ---------------------------------------------------------------------------
+// Verstecken (real-time hide & seek on a shared map)
+// ---------------------------------------------------------------------------
+
+export type HideRole = "seeker" | "hider";
+
+export interface HideInitPayload {
+  cols: number;
+  rows: number;
+  /** "0"/"1" per tile, row-major (1 = wall). */
+  walls: string;
+  role: HideRole;
+  /** Timestamp when the seeker is released onto the map. */
+  releaseAt: number;
+  endsAt: number;
+  self: { name: string; color: string };
+}
+
+export interface HideDot {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  name: string;
+  role: HideRole;
+  caught: boolean;
+}
+
+/** Per-viewer snapshot (the seeker only receives hiders it can currently see). */
+export interface HideStatePayload {
+  players: HideDot[];
+  released: boolean;
+  aliveHiders: number;
+  msLeft: number;
+  meCaught: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -857,6 +897,11 @@ export interface ClientToServerEvents {
 
   /** Pong — set this player's paddle center (normalized 0..1). */
   "pong:move": (payload: { y: number }) => void;
+
+  /** Verstecken — set this player's movement direction (each -1..1). */
+  "hide:move": (payload: { dx: number; dy: number }) => void;
+  /** Verstecken — the seeker attempts a catch (dagger stab). */
+  "hide:stab": () => void;
 }
 
 export interface ServerToClientEvents {
@@ -959,6 +1004,11 @@ export interface ServerToClientEvents {
   "pong:init": (payload: PongInitPayload) => void;
   /** Pong — a per-player match snapshot (~30/s). */
   "pong:state": (payload: PongStatePayload) => void;
+
+  /** Verstecken — the map + this player's role. */
+  "hide:init": (payload: HideInitPayload) => void;
+  /** Verstecken — a per-viewer snapshot (~20/s). */
+  "hide:state": (payload: HideStatePayload) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;

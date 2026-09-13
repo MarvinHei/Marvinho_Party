@@ -143,6 +143,7 @@ export class Net {
         travle: null,
         travleStandings: [],
         pong: null,
+        hide: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -283,6 +284,19 @@ export class Net {
 
     this.socket.on("pong:state", (snap) => {
       this.patch((prev) => (prev.pong ? { pong: { ...prev.pong, snap } } : {}));
+    });
+
+    this.socket.on("hide:init", (init) => {
+      this.patch({
+        screen: "game",
+        minigame: "verstecken",
+        minigamePhase: "playing",
+        hide: { init, snap: null },
+      });
+    });
+
+    this.socket.on("hide:state", (snap) => {
+      this.patch((prev) => (prev.hide ? { hide: { ...prev.hide, snap } } : {}));
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -479,6 +493,16 @@ export class Net {
   /** Pong — send this player's paddle center (normalized 0..1), fire-and-forget. */
   pongMove(y: number) {
     this.socket.emit("pong:move", { y });
+  }
+
+  /** Verstecken — send this player's movement direction. */
+  hideMove(dx: number, dy: number) {
+    this.socket.emit("hide:move", { dx, dy });
+  }
+
+  /** Verstecken — seeker stab (attempt a catch). */
+  hideStab() {
+    this.socket.emit("hide:stab");
   }
 
   leave() {

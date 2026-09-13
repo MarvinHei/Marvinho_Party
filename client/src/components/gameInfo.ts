@@ -14,6 +14,7 @@ export const GAME_ICON: Record<MinigameType, string> = {
   guesscountry: "🌍",
   travle: "🧭",
   pong: "🏓",
+  verstecken: "🫥",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -30,6 +31,7 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   guesscountry: "#42d17a",
   travle: "#28e0d0",
   pong: "#ffd23f",
+  verstecken: "#b06bff",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -144,6 +146,14 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "Move your paddle by moving the mouse up and down.",
       "The ball speeds up every time it's hit — don't miss.",
       "Players are paired into duels; an odd one out faces a CPU.",
+    ],
+  },
+  verstecken: {
+    tagline: "Hide from the seeker — or be the seeker and hunt.",
+    rules: [
+      "Move with WASD / arrow keys around the map.",
+      "Hiders get a head start to find cover; then the seeker is released.",
+      "The seeker only sees nearby hiders and catches them with a click (stab).",
     ],
   },
 };

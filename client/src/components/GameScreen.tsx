@@ -14,6 +14,7 @@ import { PuzzlePanel } from "./PuzzlePanel.js";
 import { GuessCountryPanel } from "./GuessCountryPanel.js";
 import { TravlePanel } from "./TravlePanel.js";
 import { PongPanel } from "./PongPanel.js";
+import { HidePanel } from "./HidePanel.js";
 import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -105,6 +106,13 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     return (
       <div className="game-wrap">
         <PongPanel seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "verstecken" && seat.hide) {
+    return (
+      <div className="game-wrap">
+        <HidePanel seat={seat} />
       </div>
     );
   }

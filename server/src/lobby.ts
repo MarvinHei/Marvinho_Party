@@ -48,6 +48,7 @@ import { generatePuzzle } from "./minigames/puzzleGen.js";
 import { GuessCountryRound } from "./minigames/guessCountry.js";
 import { TravleRound } from "./minigames/travle.js";
 import { PongRound } from "./minigames/pong.js";
+import { HideRound } from "./minigames/verstecken.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -105,6 +106,7 @@ export class Lobby {
   private guessCountry: GuessCountryRound | null = null;
   private travle: TravleRound | null = null;
   private pong: PongRound | null = null;
+  private hide: HideRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
@@ -381,6 +383,8 @@ export class Lobby {
     if (n >= 2) games.push("tetris");
     // Pong pairs players into 1v1 matches (an odd one out faces a CPU).
     if (n >= 2) games.push("pong");
+    // Verstecken: one seeker + at least two hiders.
+    if (n >= 3) games.push("verstecken");
     // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
     if (canFormTeams(n)) {
       games.push("skribblteams");
@@ -499,6 +503,7 @@ export class Lobby {
       else if (game === "guesscountry") this.startGuessCountry();
       else if (game === "travle") this.startTravle();
       else if (game === "pong") this.startPong();
+      else if (game === "verstecken") this.startVerstecken();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -1484,6 +1489,97 @@ export class Lobby {
     });
 
     this.concludeMinigame({ type: "pong", ranking, rewards, scoreboard });
+  }
+
+  // --- verstecken ---------------------------------------------------------
+
+  private startVerstecken(): void {
+    const players = this.connectedPlayers().map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      color: p.color,
+    }));
+    this.phase = "minigame";
+    this.currentMinigame = "verstecken";
+    const roundMs = this.roundSecondsFor("verstecken") * 1000;
+    const holdMs = 12000; // hiders get a head start before the seeker is loosed
+    this.hide = new HideRound(players, holdMs, roundMs);
+    this.io.to(this.id).emit("minigame:start", { type: "verstecken" });
+    const walls = this.hide.encodedWalls();
+    for (const p of this.connectedPlayers()) {
+      if (!p.socketId) continue;
+      this.io.to(p.socketId).emit("hide:init", {
+        cols: this.hide.arena.cols,
+        rows: this.hide.arena.rows,
+        walls,
+        role: this.hide.roleOf(p.id),
+        releaseAt: this.hide.releaseAt,
+        endsAt: this.hide.endsAt,
+        self: this.hide.infoOf(p.id),
+      });
+    }
+    let last = Date.now();
+    this.interval = setInterval(() => {
+      if (!this.hide) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      this.hide.tick(dt);
+      for (const p of this.connectedPlayers()) {
+        if (p.socketId) this.io.to(p.socketId).emit("hide:state", this.hide.stateFor(p.id));
+      }
+      if (this.hide.isComplete()) this.endVerstecken();
+    }, 50); // 20 Hz
+    this.schedule(() => {
+      if (this.hide) this.endVerstecken();
+    }, roundMs);
+  }
+
+  handleHideMove(playerId: string, dx: number, dy: number): void {
+    if (this.phase === "minigame") this.hide?.setMove(playerId, dx, dy);
+  }
+
+  handleHideStab(playerId: string): void {
+    if (this.phase === "minigame") this.hide?.stab(playerId);
+  }
+
+  private endVerstecken(): void {
+    if (!this.hide) return;
+    const round = this.hide;
+    this.hide = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const s = round.statsFor(id);
+      let reward: number;
+      let detail: string;
+      if (s.role === "seeker") {
+        reward = Math.min(4, 1 + s.catches);
+        detail = `seeker · caught ${s.catches}`;
+      } else if (s.survived) {
+        reward = 3;
+        detail = "survived!";
+      } else {
+        reward = 1;
+        detail = `caught after ${(s.survivedMs / 1000).toFixed(0)}s`;
+      }
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0,
+        detail,
+      };
+    });
+
+    this.concludeMinigame({ type: "verstecken", ranking, rewards, scoreboard });
   }
 
   // --- shared minigame conclusion ----------------------------------------
