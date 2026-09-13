@@ -444,8 +444,26 @@ export class BoardScene extends Phaser.Scene {
           token.root.setPosition(tx, ty);
         }
       } else if (player.position !== token.lastPosition) {
-        // Springy tile-by-tile hop toward the new position (board-game style).
-        this.hopForward(token, token.lastPosition, player.position, tx, ty, toNum(player.color));
+        // Queue a springy advance so players hop one after another (sequentially),
+        // not all at once. Freeze the bob now so a re-fan can't nudge the token
+        // while it waits its turn in the queue.
+        const tk = token;
+        const from = token.lastPosition;
+        const to = player.position;
+        const fx = tx;
+        const fy = ty;
+        const col = toNum(player.color);
+        if (!tk.hopping) {
+          tk.hopping = true;
+          tk.bob.pause();
+        }
+        this.hopQueue.push(() =>
+          this.hopForward(tk, from, to, fx, fy, col, () => {
+            this.hopBusy = false;
+            this.pumpHops();
+          }),
+        );
+        this.pumpHops();
       } else if (!token.hopping) {
         // Same tile, maybe a re-fan after grouping changed. Skip while a hop is
         // in flight so this tween doesn't fight (and visibly jerk) the hop.
@@ -473,6 +491,18 @@ export class BoardScene extends Phaser.Scene {
    * landing with a squash-and-stretch. Used after every minigame as characters
    * advance across the board.
    */
+  /** Pending advances, played one at a time so hops don't all fire together. */
+  private hopQueue: (() => void)[] = [];
+  private hopBusy = false;
+
+  private pumpHops(): void {
+    if (this.hopBusy) return;
+    const next = this.hopQueue.shift();
+    if (!next) return;
+    this.hopBusy = true;
+    next();
+  }
+
   private hopForward(
     token: Token,
     from: number,
@@ -480,6 +510,7 @@ export class BoardScene extends Phaser.Scene {
     finalX: number,
     finalY: number,
     color: number,
+    onDone?: () => void,
   ) {
     // Build the list of tiles to land on (each hop = one tile).
     const steps: { x: number; y: number }[] = [];
@@ -494,8 +525,9 @@ export class BoardScene extends Phaser.Scene {
     }
 
     const n = steps.length;
-    // Keep the whole advance snappy regardless of distance.
-    const per = Math.max(150, Math.min(300, Math.round(1500 / n)));
+    // Clear, deliberate hops (a touch slower so a multi-tile advance reads as
+    // distinct jumps rather than a blur).
+    const per = Math.max(220, Math.min(340, Math.round(1700 / n)));
     const hop = token.size * 0.7;
 
     // Clear any prior movement tween (a re-fan, or an earlier hop still in
@@ -546,6 +578,7 @@ export class BoardScene extends Phaser.Scene {
         token.avatar.setScale(1, 1);
         token.hopping = false;
         token.bob.restart();
+        onDone?.();
       },
     });
   }

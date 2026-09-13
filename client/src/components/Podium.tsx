@@ -1,6 +1,34 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { MinigameResult, ScoreRow, TeamScore } from "@marvinho/shared";
 import { sfx } from "../audio/audio.js";
+import { store } from "../state/store.js";
+import type { SeatState } from "../state/types.js";
+
+/** Host confirms the podium; others wait. Releases the board advance. */
+function ResultsConfirm({ seat }: { seat: SeatState }) {
+  const me = seat.lobby?.players.find((p) => p.id === seat.playerId);
+  const isHost = me?.isHost ?? false;
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    try {
+      await store.net(seat.id)?.confirmResults();
+    } catch {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="podium-confirm">
+      {isHost ? (
+        <button className="btn wide pink" disabled={busy} onClick={go}>
+          {busy ? "Los geht's…" : "Bestätigen & weiter →"}
+        </button>
+      ) : (
+        <div className="hint">Warte auf den Host…</div>
+      )}
+    </div>
+  );
+}
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const HEIGHTS = [132, 102, 80];
@@ -79,7 +107,7 @@ function TeamColumn({ team }: { team: TeamScore }) {
   );
 }
 
-function TeamScoreboard({ result }: { result: MinigameResult }) {
+function TeamScoreboard({ result, seat }: { result: MinigameResult; seat: SeatState }) {
   const teams = result.teams ?? [];
   return (
     <div className="overlay backdrop podium-overlay">
@@ -95,12 +123,13 @@ function TeamScoreboard({ result }: { result: MinigameResult }) {
             <TeamColumn key={t.team} team={t} />
           ))}
         </div>
+        <ResultsConfirm seat={seat} />
       </div>
     </div>
   );
 }
 
-export function Podium({ result }: { result: MinigameResult }) {
+export function Podium({ result, seat }: { result: MinigameResult; seat: SeatState }) {
   // Celebratory fanfare when the results reveal.
   useEffect(() => {
     sfx("win");
@@ -108,7 +137,7 @@ export function Podium({ result }: { result: MinigameResult }) {
 
   // Team games get a two-team scoreboard; solo games get the podium.
   if (result.teams && result.teams.length > 0) {
-    return <TeamScoreboard result={result} />;
+    return <TeamScoreboard result={result} seat={seat} />;
   }
 
   const board = result.scoreboard;
@@ -146,6 +175,8 @@ export function Podium({ result }: { result: MinigameResult }) {
             ))}
           </div>
         )}
+
+        <ResultsConfirm seat={seat} />
       </div>
     </div>
   );

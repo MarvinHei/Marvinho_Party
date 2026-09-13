@@ -71,8 +71,10 @@ const teamColor = (t: CodenamesTeam) => (t === "a" ? "#e6394b" : "#3aa0ff");
 
 /** Timings for the pre-game sequence (ms). */
 const COUNTDOWN_MS = 5000;
-/** How long the results podium shows before returning to the lobby (ms). */
-const RESULTS_MS = 6500;
+/** Fallback: auto-confirm the podium if the host never does (ms). */
+const RESULTS_MS = 45000;
+/** How long the board-advance animation runs after the host confirms (ms). */
+const ADVANCE_MS = 4200;
 /** How long the winner celebration shows before returning to the lobby (ms). */
 const MATCH_END_MS = 9000;
 
@@ -117,6 +119,10 @@ export class Lobby {
   /** The team game awaiting its draft-confirmation ready-gate, if any. */
   private assignGame: MinigameType | null = null;
   private sandbox = false;
+  /** True while the results podium waits for the host to confirm the advance. */
+  private awaitingConfirm = false;
+  /** How long the (sequential) board advance runs for this round's rewards (ms). */
+  private lastAdvanceMs = ADVANCE_MS;
   private timers: NodeJS.Timeout[] = [];
   private interval: NodeJS.Timeout | null = null;
 
@@ -358,6 +364,7 @@ export class Lobby {
 
   private maybeStartFromReady(): void {
     if (this.sandbox) return; // sandbox rounds are launched explicitly
+    if (this.awaitingConfirm) return; // wait for the host to confirm the podium first
 
     const connected = this.connectedPlayers();
     const allReady = connected.length >= 1 && connected.every((p) => p.ready);
@@ -495,6 +502,7 @@ export class Lobby {
   private beginCountdown(game: MinigameType): void {
     this.explainGame = null;
     this.assignGame = null;
+    this.awaitingConfirm = false;
     this.phase = "countdown";
     const endsAt = Date.now() + COUNTDOWN_MS;
     this.io.to(this.id).emit("minigame:countdown", { game, endsAt });
@@ -1703,24 +1711,40 @@ export class Lobby {
       return;
     }
 
-    // Show the results podium briefly, then keep everyone on the board in an
-    // intermission (the board race carries over). We deliberately do NOT return
-    // to the lobby screen mid-match — the host only configures at the very start.
+    // Show the results podium and wait for the host to confirm before the board
+    // advances (the client then plays the hops). We deliberately do NOT return to
+    // the lobby screen mid-match — the host only configures at the very start.
     this.phase = "intermission";
+    this.awaitingConfirm = true;
+    // Time the sequential advance to the actual rewards (players hop one by one).
+    const tiles = Object.values(result.rewards).reduce((a, b) => a + b, 0);
+    const movers = Object.values(result.rewards).filter((r) => r > 0).length;
+    this.lastAdvanceMs = Math.min(9000, 900 + movers * 350 + tiles * 260);
     this.resetReady();
     this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
+    // Fallback: auto-confirm if the host is idle/absent for a long time.
     this.schedule(() => {
-      // Guard: a new round may already have been started from the ready vote.
+      if (this.phase === "intermission" && this.awaitingConfirm) this.confirmResults(this.hostId);
+    }, RESULTS_MS);
+  }
+
+  /** Host confirms the podium: release the board advance, then pace the next round. */
+  confirmResults(playerId: string): void {
+    if (this.phase !== "intermission" || !this.awaitingConfirm) return;
+    if (!this.isHost(playerId)) throw new Error("Only the host can continue.");
+    this.awaitingConfirm = false;
+    this.clearTimers();
+    // Tell clients to play the board advance (sequential hops) now.
+    this.io.to(this.id).emit("minigame:advance", { lobby: this.toView() });
+    // After the animation, roll into the next round.
+    this.schedule(() => {
       if (this.phase !== "intermission") return;
       if (this.settings.explanations) {
-        // The explanation screen provides the ready-gate; roll straight into the
-        // wheel so there aren't two consecutive ready votes.
         this.spinWheel();
       } else {
-        // No explanation screen: the board's ready vote paces the next round.
         this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
       }
-    }, RESULTS_MS);
+    }, this.lastAdvanceMs);
   }
 
   // --- views --------------------------------------------------------------

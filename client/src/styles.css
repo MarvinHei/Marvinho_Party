@@ -814,6 +814,15 @@ input[type="text"]:focus {
 .pong-sub { color: var(--ink-dim); font-size: 14px; }
 .pong-hint { font-size: 11px; color: var(--ink-dim); }
 
+.podium-confirm {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.podium-confirm .btn { min-width: 240px; }
+
 /* ---- Verstecken (hide & seek) ---- */
 .hide-wrap {
   flex: 1;

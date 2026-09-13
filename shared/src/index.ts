@@ -840,6 +840,9 @@ export interface ClientToServerEvents {
   /** Host-only: skip the ready vote and start the next minigame now. */
   "lobby:forceStart": (ack: (res: Ack<null>) => void) => void;
 
+  /** Host-only: confirm the results podium, releasing the board advance. */
+  "lobby:confirmResults": (ack: (res: Ack<null>) => void) => void;
+
   /** Host-only: remove another player from the lobby. */
   "lobby:kick": (
     payload: { playerId: string },
@@ -1061,6 +1064,9 @@ export interface ServerToClientEvents {
     result: MinigameResult;
     lobby: LobbyView;
   }) => void;
+
+  /** The host confirmed the podium — clients play the board advance now. */
+  "minigame:advance": (payload: { lobby: LobbyView }) => void;
 
   "game:finished": (payload: { winnerId: string; lobby: LobbyView }) => void;
 

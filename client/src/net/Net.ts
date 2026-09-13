@@ -318,9 +318,16 @@ export class Net {
         lobby,
         minigamePhase: "results",
         lastResult: result,
+        // Hold the board at the pre-advance positions until the host confirms.
+        resultsPending: true,
         wheel: null,
         wordle: prev.wordle ? { ...prev.wordle, finished: true } : null,
       }));
+    });
+
+    this.socket.on("minigame:advance", ({ lobby }) => {
+      // Release the board advance — the board now plays the (sequential) hops.
+      this.patch({ lobby, resultsPending: false });
     });
 
     this.socket.on("game:finished", ({ lobby }) => {
@@ -383,6 +390,12 @@ export class Net {
   forceStart(): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:forceStart", (res) => this.ack(res, resolve, reject));
+    });
+  }
+
+  confirmResults(): Promise<null> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:confirmResults", (res) => this.ack(res, resolve, reject));
     });
   }
 

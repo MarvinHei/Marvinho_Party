@@ -117,6 +117,8 @@ export interface SeatState {
 
   minigame: MinigameType | null;
   minigamePhase: MinigamePhase | null;
+  /** True while the results podium waits for the host to confirm the advance. */
+  resultsPending: boolean;
   /** The game whose explanation screen is showing (phase "explaining"). */
   explainGame: MinigameType | null;
   standings: WordleStanding[];
@@ -168,6 +170,7 @@ export function initialSeat(id: string, label: string): SeatState {
     error: null,
     minigame: null,
     minigamePhase: null,
+    resultsPending: false,
     explainGame: null,
     standings: [],
     lastResult: null,

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
@@ -25,18 +25,7 @@ import { Countdown } from "./Countdown.js";
 import { Podium } from "./Podium.js";
 
 export function GameScreen({ seat }: { seat: SeatState }) {
-  // Briefly hold the results podium so the board's forward-hop animation plays
-  // in the open first, then the podium slides in over it.
   const resultsActive = seat.minigamePhase === "results" && !!seat.lastResult;
-  const [podiumReady, setPodiumReady] = useState(false);
-  useEffect(() => {
-    if (!resultsActive) {
-      setPodiumReady(false);
-      return;
-    }
-    const t = setTimeout(() => setPodiumReady(true), 1500);
-    return () => clearTimeout(t);
-  }, [resultsActive]);
 
   const lobby = seat.lobby;
   if (!lobby) return null;
@@ -149,11 +138,15 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     );
   }
 
+  // While the results podium waits for the host to confirm, hold every token at
+  // its pre-advance tile (subtract this round's reward). Confirming clears
+  // resultsPending, the real positions flow in, and the board plays the hops.
+  const rewards = seat.resultsPending ? seat.lastResult?.rewards : undefined;
   const boardPlayers = lobby.players.map((p) => ({
     id: p.id,
     nickname: p.nickname,
     color: p.color,
-    position: p.position,
+    position: rewards ? Math.max(0, p.position - (rewards[p.id] ?? 0)) : p.position,
     ready: p.ready,
   }));
 
@@ -161,14 +154,17 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   const assigning = seat.minigamePhase === "assigning" && !!seat.teamDraft;
   const explaining = seat.minigamePhase === "explaining" && !!seat.explainGame;
   const countingDown = seat.minigamePhase === "countdown" && !!seat.countdown;
-  const showPodium = !isFinished && resultsActive && podiumReady;
+  // The podium shows until the host confirms; then it hides and the board plays
+  // the advance hops.
+  const showPodium = !isFinished && resultsActive && seat.resultsPending;
   // Between minigames we stay on the board. With explanations OFF, a ready vote
   // on the board paces the next round; with them ON, the explanation screen is
   // the ready-gate instead (so there's exactly one gate per round).
   const inIntermission =
     !isFinished && (seat.minigamePhase === "results" || seat.minigamePhase === "intermission");
   const showReady =
-    inIntermission && !spinning && !assigning && !countingDown && !lobby.settings.explanations;
+    inIntermission && !spinning && !assigning && !countingDown && !seat.resultsPending &&
+    !lobby.settings.explanations;
 
   return (
     <div className="game-wrap board-stage">
@@ -192,7 +188,7 @@ export function GameScreen({ seat }: { seat: SeatState }) {
         <Countdown game={seat.countdown.game} endsAt={seat.countdown.endsAt} />
       )}
 
-      {showPodium && seat.lastResult && <Podium result={seat.lastResult} />}
+      {showPodium && seat.lastResult && <Podium result={seat.lastResult} seat={seat} />}
 
       {showReady && <ReadyPanel seat={seat} withPodium={showPodium} />}
     </div>
