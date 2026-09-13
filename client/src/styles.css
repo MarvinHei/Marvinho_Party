@@ -2594,8 +2594,11 @@ input[type="text"]:focus {
 @keyframes eqBar { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
 .music-slider { width: 76px; accent-color: var(--accent-2); cursor: pointer; }
 .music-slider:disabled { opacity: 0.4; }
+.vol-stack { display: flex; flex-direction: column; gap: 5px; }
+.vol-row { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.vol-ico { font-size: 12px; line-height: 1; width: 15px; text-align: center; }
 @media (max-width: 640px) {
-  .music-slider { display: none; }
+  .vol-stack { display: none; }
   .music-control { top: 8px; right: 8px; }
 }
 

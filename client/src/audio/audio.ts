@@ -81,6 +81,9 @@ class AudioManager {
   get musicVolume(): number {
     return this.settings.musicVolume;
   }
+  get sfxVolume(): number {
+    return this.settings.sfxVolume;
+  }
   get analyser(): AnalyserNode | null {
     return this.analyserNode;
   }
@@ -341,6 +344,15 @@ class AudioManager {
     this.settings.musicVolume = Math.max(0, Math.min(1, v));
     if (this.musicGain && this.ctx) {
       this.musicGain.gain.setTargetAtTime(this.settings.musicVolume, this.ctx.currentTime, 0.02);
+    }
+    this.persist();
+    this.emit();
+  }
+
+  setSfxVolume(v: number) {
+    this.settings.sfxVolume = Math.max(0, Math.min(1, v));
+    if (this.sfxGain && this.ctx) {
+      this.sfxGain.gain.setTargetAtTime(this.settings.sfxVolume, this.ctx.currentTime, 0.02);
     }
     this.persist();
     this.emit();
