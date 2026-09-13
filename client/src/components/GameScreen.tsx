@@ -24,6 +24,7 @@ import { SandboxMenu } from "./SandboxMenu.js";
 import { Wheel } from "./Wheel.js";
 import { Countdown } from "./Countdown.js";
 import { Podium } from "./Podium.js";
+import { CelebrationOverlay } from "./CelebrationOverlay.js";
 
 export function GameScreen({ seat }: { seat: SeatState }) {
   const resultsActive = seat.minigamePhase === "results" && !!seat.lastResult;
@@ -175,9 +176,10 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   // the ready-gate instead (so there's exactly one gate per round).
   const inIntermission =
     !isFinished && (seat.minigamePhase === "results" || seat.minigamePhase === "intermission");
+  const celebrating = !isFinished && !!seat.celebrateWinnerId;
   const showReady =
     inIntermission && !spinning && !assigning && !countingDown && !seat.resultsPending &&
-    !lobby.settings.explanations;
+    !celebrating && !lobby.settings.explanations;
 
   return (
     <div className="game-wrap board-stage">
@@ -202,6 +204,10 @@ export function GameScreen({ seat }: { seat: SeatState }) {
       )}
 
       {showPodium && seat.lastResult && <Podium result={seat.lastResult} seat={seat} />}
+
+      {celebrating && seat.celebrateWinnerId && (
+        <CelebrationOverlay seat={seat} winnerId={seat.celebrateWinnerId} />
+      )}
 
       {showReady && <ReadyPanel seat={seat} withPodium={showPodium} />}
     </div>

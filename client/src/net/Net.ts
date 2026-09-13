@@ -148,6 +148,7 @@ export class Net {
         runner: null,
         spectateTarget: null,
         spectateFrame: null,
+        celebrateWinnerId: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -351,8 +352,13 @@ export class Net {
       this.patch({ lobby, resultsPending: false });
     });
 
+    this.socket.on("minigame:celebrate", ({ winnerId, lobby }) => {
+      // Hops have landed; play the on-board celebration before the win screen.
+      this.patch({ lobby, resultsPending: false, celebrateWinnerId: winnerId });
+    });
+
     this.socket.on("game:finished", ({ lobby }) => {
-      this.patch({ lobby, screen: "game", minigamePhase: "results" });
+      this.patch({ lobby, screen: "game", minigamePhase: "results", celebrateWinnerId: null });
     });
 
     this.socket.on("server:error", ({ message }) => {

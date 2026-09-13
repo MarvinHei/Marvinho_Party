@@ -1225,6 +1225,9 @@ export interface ServerToClientEvents {
   /** The host confirmed the podium — clients play the board advance now. */
   "minigame:advance": (payload: { lobby: LobbyView }) => void;
 
+  /** After the winning hop lands: play the on-board celebration before the win screen. */
+  "minigame:celebrate": (payload: { winnerId: string; lobby: LobbyView }) => void;
+
   "game:finished": (payload: { winnerId: string; lobby: LobbyView }) => void;
 
   "server:error": (payload: { message: string }) => void;

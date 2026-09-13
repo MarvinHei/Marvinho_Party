@@ -985,6 +985,31 @@ input[type="text"]:focus {
   overflow: hidden;
   pointer-events: none;
 }
+
+/* On-board winner celebration (before the win-screen panel). */
+.celebrate-overlay { z-index: 30; pointer-events: none; }
+.celebrate-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: celebratePop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.celebrate-char { animation: celebrateBounce 0.66s ease-in-out infinite; }
+.celebrate-text {
+  font-size: clamp(22px, 4vw, 34px);
+  color: var(--accent);
+  text-shadow: 3px 3px 0 var(--accent-2);
+}
+@keyframes celebrateBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-16px); }
+}
+@keyframes celebratePop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
 .confetti {
   position: absolute;
   top: -12px;

@@ -80,6 +80,8 @@ const COUNTDOWN_MS = 5000;
 const RESULTS_MS = 45000;
 /** How long the board-advance animation runs after the host confirms (ms). */
 const ADVANCE_MS = 4200;
+/** How long the on-board winner celebration plays before the win screen (ms). */
+const CELEBRATE_MS = 2800;
 /** How long the winner celebration shows before returning to the lobby (ms). */
 const MATCH_END_MS = 9000;
 
@@ -130,6 +132,8 @@ export class Lobby {
   private spectateWatch = new Map<string, string>();
   /** True while the results podium waits for the host to confirm the advance. */
   private awaitingConfirm = false;
+  /** Set when this round produced a winner: celebrate + win screen after the hops. */
+  private pendingWinnerId: string | null = null;
   /** How long the (sequential) board advance runs for this round's rewards (ms). */
   private lastAdvanceMs = ADVANCE_MS;
   private timers: NodeJS.Timeout[] = [];
@@ -539,6 +543,7 @@ export class Lobby {
     this.explainGame = null;
     this.assignGame = null;
     this.awaitingConfirm = false;
+    this.pendingWinnerId = null;
     this.spectateFrames.clear();
     this.spectateWatch.clear();
     this.phase = "countdown";
@@ -1839,32 +1844,12 @@ export class Lobby {
       return;
     }
 
+    // A winner is handled AFTER the board advance so players see the winning hop
+    // cross the finish, then the celebration, then the win screen.
     const winner = result.ranking
       .map((id) => this.players.get(id))
       .find((p): p is Player => !!p && p.position >= GAME_CONFIG.boardLength);
-
-    if (winner) {
-      this.winnerId = winner.id;
-      this.phase = "finished";
-      this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
-      this.io.to(this.id).emit("game:finished", {
-        winnerId: this.winnerId,
-        lobby: this.toView(),
-      });
-      // After the celebration, reset the board and return everyone to the OPEN
-      // lobby (not the home page) so they can start a fresh match.
-      this.schedule(() => {
-        for (const p of this.players.values()) {
-          p.position = 0;
-          p.ready = false;
-        }
-        this.winnerId = null;
-        this.currentMinigame = null;
-        this.phase = "lobby";
-        this.broadcastLobby();
-      }, MATCH_END_MS);
-      return;
-    }
+    this.pendingWinnerId = winner ? winner.id : null;
 
     // Show the results podium and wait for the host to confirm before the board
     // advances (the client then plays the hops). We deliberately do NOT return to
@@ -1891,15 +1876,41 @@ export class Lobby {
     this.clearTimers();
     // Tell clients to play the board advance (sequential hops) now.
     this.io.to(this.id).emit("minigame:advance", { lobby: this.toView() });
-    // After the animation, roll into the next round.
+    // After the hops finish: celebrate a winner, else roll into the next round.
     this.schedule(() => {
       if (this.phase !== "intermission") return;
-      if (this.settings.explanations) {
+      if (this.pendingWinnerId) {
+        this.startCelebration();
+      } else if (this.settings.explanations) {
         this.spinWheel();
       } else {
         this.io.to(this.id).emit("intermission:start", { lobby: this.toView() });
       }
     }, this.lastAdvanceMs);
+  }
+
+  /** After the winning hop lands: play the on-board celebration, then the win screen. */
+  private startCelebration(): void {
+    const winnerId = this.pendingWinnerId;
+    if (!winnerId) return;
+    this.io.to(this.id).emit("minigame:celebrate", { winnerId, lobby: this.toView() });
+    this.schedule(() => {
+      this.winnerId = winnerId;
+      this.pendingWinnerId = null;
+      this.phase = "finished";
+      this.io.to(this.id).emit("game:finished", { winnerId, lobby: this.toView() });
+      // After the win screen, reset the board and return everyone to the OPEN lobby.
+      this.schedule(() => {
+        for (const p of this.players.values()) {
+          p.position = 0;
+          p.ready = false;
+        }
+        this.winnerId = null;
+        this.currentMinigame = null;
+        this.phase = "lobby";
+        this.broadcastLobby();
+      }, MATCH_END_MS);
+    }, CELEBRATE_MS);
   }
 
   // --- views --------------------------------------------------------------
