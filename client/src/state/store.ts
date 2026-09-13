@@ -19,6 +19,7 @@ export const REQUIRED_PLAYERS: Record<MinigameType, number> = {
   pong: 2,
   verstecken: 3,
   battle: 3,
+  runner: 2,
 };
 
 let seatCounter = 0;

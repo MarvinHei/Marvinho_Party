@@ -312,6 +312,21 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleBattleShoot(session.playerId, angle);
   });
 
+  socket.on("runner:move", ({ dir, duck }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleRunnerMove(session.playerId, dir, duck);
+  });
+
+  socket.on("runner:jump", () => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleRunnerJump(session.playerId);
+  });
+
+  socket.on("runner:shock", () => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleRunnerShock(session.playerId);
+  });
+
   socket.on("lobby:debugStart", ({ game }, ack) => {
     try {
       if (!DEBUG_ENABLED) throw new Error("Debug mode is disabled.");

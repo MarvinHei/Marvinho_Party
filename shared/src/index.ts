@@ -188,7 +188,8 @@ export type MinigameType =
   | "travle"
   | "pong"
   | "verstecken"
-  | "battle";
+  | "battle"
+  | "runner";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -207,6 +208,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   pong: "Pong",
   verstecken: "Verstecken",
   battle: "Battle Royale",
+  runner: "Runner Rush",
 };
 
 // ---------------------------------------------------------------------------
@@ -258,6 +260,7 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   pong: 120,
   verstecken: 150,
   battle: 150,
+  runner: 90,
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -269,6 +272,7 @@ export const TIMER_BOUNDS: Partial<Record<MinigameType, { min: number; max: numb
   codenames: { min: 60, max: 600, step: 30 },
   guesscountry: { min: 45, max: 300, step: 15 },
   travle: { min: 60, max: 420, step: 30 },
+  runner: { min: 45, max: 180, step: 15 },
 };
 
 /** Selectable Tetris board heights. */
@@ -806,6 +810,61 @@ export interface BattleStatePayload {
 }
 
 // ---------------------------------------------------------------------------
+// Runner Rush (real-time horizontal auto-scroll jump'n'run)
+// ---------------------------------------------------------------------------
+
+export interface RunnerInitPayload {
+  /** Visible track width, in tiles. */
+  viewW: number;
+  /** Track height, in tiles (vertical). */
+  viewH: number;
+  /** Height of the ground band, in tiles (players stand on top of it). */
+  groundH: number;
+  /** Shockwave cooldown, in ms (for the client's cooldown ring). */
+  shockCooldownMs: number;
+  endsAt: number;
+  self: { name: string; color: string };
+}
+
+/** One obstacle, positioned in screen space (x = worldX − camX). */
+export interface RunnerObstacle {
+  /** Left edge, in tiles from the left of the viewport. */
+  x: number;
+  w: number;
+  h: number;
+  /** "low" sits on the ground (jump over it); "high" hangs down (duck under it). */
+  kind: "low" | "high";
+  /** Visual variant index, so the client can vary the sprite. */
+  variant: number;
+}
+
+export interface RunnerDot {
+  id: string;
+  /** Screen-space x (tiles from the left edge of the viewport). */
+  x: number;
+  /** Height above the ground, in tiles (0 = standing on the ground). */
+  h: number;
+  color: string;
+  name: string;
+  alive: boolean;
+  ducking: boolean;
+  /** Cooldown fraction 0..1 (1 = shockwave ready). */
+  shock: number;
+  /** ms since this player emitted a shockwave, or -1 (drives the burst ring). */
+  boomAge: number;
+}
+
+export interface RunnerStatePayload {
+  players: RunnerDot[];
+  obstacles: RunnerObstacle[];
+  /** World distance the camera has travelled (for the distance readout). */
+  dist: number;
+  alive: number;
+  meAlive: boolean;
+  msLeft: number;
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -947,6 +1006,13 @@ export interface ClientToServerEvents {
   "battle:move": (payload: { dx: number; dy: number }) => void;
   /** Battle Royale — fire a shot in the given aim angle (radians). */
   "battle:shoot": (payload: { angle: number }) => void;
+
+  /** Runner — set held state: dir (+1 accelerate / −1 brake / 0) and duck. */
+  "runner:move": (payload: { dir: number; duck: boolean }) => void;
+  /** Runner — jump (ignored unless grounded). */
+  "runner:jump": () => void;
+  /** Runner — emit a shockwave that shoves nearby players (on cooldown). */
+  "runner:shock": () => void;
 }
 
 export interface ServerToClientEvents {
@@ -1059,6 +1125,11 @@ export interface ServerToClientEvents {
   "battle:init": (payload: BattleInitPayload) => void;
   /** Battle Royale — a snapshot of players + bullets (~30/s). */
   "battle:state": (payload: BattleStatePayload) => void;
+
+  /** Runner — the track setup + this player's identity. */
+  "runner:init": (payload: RunnerInitPayload) => void;
+  /** Runner — a snapshot of players + nearby obstacles (~30/s). */
+  "runner:state": (payload: RunnerStatePayload) => void;
 
   "minigame:ended": (payload: {
     result: MinigameResult;

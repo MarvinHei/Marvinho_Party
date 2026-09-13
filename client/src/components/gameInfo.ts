@@ -16,6 +16,7 @@ export const GAME_ICON: Record<MinigameType, string> = {
   pong: "🏓",
   verstecken: "🫥",
   battle: "🔫",
+  runner: "🏃",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -34,6 +35,7 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   pong: "#ffd23f",
   verstecken: "#b06bff",
   battle: "#ff8c42",
+  runner: "#28e0d0",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -164,6 +166,14 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "Move with WASD / arrow keys; aim with the mouse.",
       "Click to fire your pistol — one hit eliminates a player.",
       "Use the walls for cover. Outlast everyone to win.",
+    ],
+  },
+  runner: {
+    tagline: "Keep up with the scrolling track — don't fall off the screen.",
+    rules: [
+      "→ accelerate, ← brake, ↑ jump over obstacles, ↓ duck under them.",
+      "Bonk an obstacle and you stall — drift off the left edge and you're out.",
+      "Press Space for a shockwave that shoves nearby rivals (5s cooldown).",
     ],
   },
 };

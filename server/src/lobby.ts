@@ -50,6 +50,7 @@ import { TravleRound } from "./minigames/travle.js";
 import { PongRound } from "./minigames/pong.js";
 import { HideRound } from "./minigames/verstecken.js";
 import { BattleRound } from "./minigames/battle.js";
+import { RunnerRound } from "./minigames/runner.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -111,6 +112,7 @@ export class Lobby {
   private pong: PongRound | null = null;
   private hide: HideRound | null = null;
   private battle: BattleRound | null = null;
+  private runner: RunnerRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
@@ -396,6 +398,8 @@ export class Lobby {
     if (n >= 3) games.push("verstecken");
     // Battle Royale: a free-for-all with at least three players.
     if (n >= 3) games.push("battle");
+    // Runner Rush: a side-scroll survival race for two or more.
+    if (n >= 2) games.push("runner");
     // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
     if (canFormTeams(n)) {
       games.push("skribblteams");
@@ -517,6 +521,7 @@ export class Lobby {
       else if (game === "pong") this.startPong();
       else if (game === "verstecken") this.startVerstecken();
       else if (game === "battle") this.startBattle();
+      else if (game === "runner") this.startRunner();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -1670,6 +1675,87 @@ export class Lobby {
     });
 
     this.concludeMinigame({ type: "battle", ranking, rewards, scoreboard });
+  }
+
+  // --- runner rush --------------------------------------------------------
+
+  private startRunner(): void {
+    const players = this.connectedPlayers().map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      color: p.color,
+    }));
+    this.phase = "minigame";
+    this.currentMinigame = "runner";
+    const roundMs = this.roundSecondsFor("runner") * 1000;
+    this.runner = new RunnerRound(players, roundMs);
+    this.io.to(this.id).emit("minigame:start", { type: "runner" });
+    for (const p of this.connectedPlayers()) {
+      if (!p.socketId) continue;
+      this.io.to(p.socketId).emit("runner:init", {
+        viewW: this.runner.viewW,
+        viewH: this.runner.viewH,
+        groundH: this.runner.groundH,
+        shockCooldownMs: this.runner.shockCooldownMs,
+        endsAt: this.runner.endsAt,
+        self: this.runner.infoOf(p.id),
+      });
+    }
+    let last = Date.now();
+    this.interval = setInterval(() => {
+      if (!this.runner) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      this.runner.tick(dt);
+      for (const p of this.connectedPlayers()) {
+        if (p.socketId) this.io.to(p.socketId).emit("runner:state", this.runner.stateFor(p.id));
+      }
+      if (this.runner.isComplete()) this.endRunner();
+    }, 33); // 30 Hz
+    this.schedule(() => {
+      if (this.runner) this.endRunner();
+    }, roundMs);
+  }
+
+  handleRunnerMove(playerId: string, dir: number, duck: boolean): void {
+    if (this.phase === "minigame") this.runner?.setMove(playerId, dir, duck);
+  }
+
+  handleRunnerJump(playerId: string): void {
+    if (this.phase === "minigame") this.runner?.jump(playerId);
+  }
+
+  handleRunnerShock(playerId: string): void {
+    if (this.phase === "minigame") this.runner?.shock(playerId);
+  }
+
+  private endRunner(): void {
+    if (!this.runner) return;
+    const round = this.runner;
+    this.runner = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const s = round.statsFor(id);
+      const reward = rewardForRank(rank);
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0 && s.survived,
+        detail: s.survived ? "reached the end" : `ran ${Math.round(s.distance)}m`,
+      };
+    });
+
+    this.concludeMinigame({ type: "runner", ranking, rewards, scoreboard });
   }
 
   // --- shared minigame conclusion ----------------------------------------

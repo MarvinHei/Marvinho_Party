@@ -145,6 +145,7 @@ export class Net {
         pong: null,
         hide: null,
         battle: null,
+        runner: null,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -311,6 +312,19 @@ export class Net {
 
     this.socket.on("battle:state", (snap) => {
       this.patch((prev) => (prev.battle ? { battle: { ...prev.battle, snap } } : {}));
+    });
+
+    this.socket.on("runner:init", (init) => {
+      this.patch({
+        screen: "game",
+        minigame: "runner",
+        minigamePhase: "playing",
+        runner: { init, snap: null },
+      });
+    });
+
+    this.socket.on("runner:state", (snap) => {
+      this.patch((prev) => (prev.runner ? { runner: { ...prev.runner, snap } } : {}));
     });
 
     this.socket.on("minigame:ended", ({ result, lobby }) => {
@@ -540,6 +554,21 @@ export class Net {
   /** Battle Royale — fire a shot at the given aim angle (radians). */
   battleShoot(angle: number) {
     this.socket.emit("battle:shoot", { angle });
+  }
+
+  /** Runner — send held state (accelerate/brake + duck). */
+  runnerMove(dir: number, duck: boolean) {
+    this.socket.emit("runner:move", { dir, duck });
+  }
+
+  /** Runner — jump. */
+  runnerJump() {
+    this.socket.emit("runner:jump");
+  }
+
+  /** Runner — emit a shockwave. */
+  runnerShock() {
+    this.socket.emit("runner:shock");
   }
 
   leave() {

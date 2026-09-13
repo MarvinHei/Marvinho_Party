@@ -16,6 +16,8 @@ import type {
   HideStatePayload,
   PongInitPayload,
   PongStatePayload,
+  RunnerInitPayload,
+  RunnerStatePayload,
   PuzzleStanding,
   SkribblSegment,
   SkribblTeamsView,
@@ -74,6 +76,11 @@ export interface HideClientState {
 export interface BattleClientState {
   init: BattleInitPayload;
   snap: BattleStatePayload | null;
+}
+
+export interface RunnerClientState {
+  init: RunnerInitPayload;
+  snap: RunnerStatePayload | null;
 }
 
 export type Screen = "home" | "lobby" | "game";
@@ -151,6 +158,7 @@ export interface SeatState {
   pong: PongClientState | null;
   hide: HideClientState | null;
   battle: BattleClientState | null;
+  runner: RunnerClientState | null;
 }
 
 export interface StoreSnapshot {
@@ -198,5 +206,6 @@ export function initialSeat(id: string, label: string): SeatState {
     pong: null,
     hide: null,
     battle: null,
+    runner: null,
   };
 }

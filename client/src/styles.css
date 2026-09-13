@@ -885,6 +885,42 @@ input[type="text"]:focus {
 .hide-sub { color: var(--ink-dim); font-size: 13px; }
 .hide-hint { font-size: 11px; color: var(--ink-dim); }
 
+/* ---- Runner Rush footer / shockwave meter ---- */
+.runner-footer {
+  width: min(96vw, 940px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.runner-shock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.runner-shock.ready { color: #ffd23f; }
+.runner-shock-bar {
+  width: 120px;
+  height: 10px;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: #171433;
+  overflow: hidden;
+}
+.runner-shock-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8c42, #ffd23f);
+  transition: width 0.1s linear;
+}
+.runner-shock.ready .runner-shock-fill {
+  background: #ffd23f;
+  box-shadow: 0 0 8px #ffd23f;
+}
+.runner-shock-label { min-width: 44px; text-align: right; }
+
 /* ---- Ready bar ---- */
 .ready-bar {
   position: absolute;

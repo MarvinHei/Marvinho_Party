@@ -24,7 +24,7 @@ const GAME_ORDER: MinigameType[] = [
   "zip", "queens", "sudoku", "tango",
   "wordle", "skribbl", "skribblteams", "findword",
   "tetris", "codenames",
-  "pong", "verstecken", "battle",
+  "pong", "verstecken", "battle", "runner",
   "guesscountry", "travle",
 ];
 
