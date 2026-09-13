@@ -2309,6 +2309,30 @@ input[type="text"]:focus {
   display: block;
   border-radius: 3px;
 }
+.tetris-spectate {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.tetris-watching {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #ffd23f;
+  background: rgba(13, 11, 34, 0.72);
+  border-radius: 6px;
+}
+.tetris-opp.watchable { cursor: pointer; }
+.tetris-opp.watchable:hover { outline: 2px solid rgba(255, 210, 63, 0.5); border-radius: 4px; }
+.tetris-opp.watching { outline: 2px solid #ffd23f; border-radius: 4px; }
 .tetris-ko {
   position: absolute;
   inset: 0;

@@ -6,7 +6,7 @@ import type { SeatState } from "../state/types.js";
 
 const COLS = TETRIS_CONFIG.cols;
 const ROWS = TETRIS_CONFIG.rows;
-const CELL = 26;
+const CELL = 32;
 
 type Piece = "I" | "O" | "T" | "S" | "Z" | "J" | "L";
 
@@ -305,7 +305,14 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
   const [lines, setLines] = useState(0);
   const [pending, setPending] = useState(0);
   const [target, setTarget] = useState<string>("random");
+  // Once KO'd, the player can watch an opponent's board read-only.
+  const [spectateId, setSpectateId] = useState<string | null>(null);
   const garbageProcessed = useRef(0);
+
+  // Spectating only makes sense while KO'd; drop it when a new match starts.
+  useEffect(() => {
+    if (!dead) setSpectateId(null);
+  }, [dead]);
 
   // Swap the idle music for the Tetris track for the duration of the match.
   useEffect(() => {
@@ -520,6 +527,8 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
   }
 
   const boardsById = new Map(seat.tetrisBoards.map((b) => [b.playerId, b]));
+  const spectateBoard = dead && spectateId ? boardsById.get(spectateId) : undefined;
+  const spectateOpp = spectateId ? opponents.find((o) => o.id === spectateId) : undefined;
 
   return (
     <div className="tetris-wrap">
@@ -535,10 +544,19 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
             height={(init?.rows ?? ROWS) * CELL}
             className="tetris-canvas"
           />
-          {dead && (
+          {spectateBoard && (
+            <div className="tetris-spectate">
+              <SpectateBoard cells={spectateBoard.cells} rows={init.rows} />
+              <div className="tetris-watching pixel">
+                <span>👁 {spectateOpp?.nickname ?? "player"}</span>
+                <button className="mini-btn" onClick={() => setSpectateId(null)}>✕</button>
+              </div>
+            </div>
+          )}
+          {dead && !spectateBoard && (
             <div className="tetris-ko">
               <span className="pixel">KO'd</span>
-              <span className="hint">Waiting for the match to end…</span>
+              <span className="hint">Pick an opponent on the right to watch, or wait…</span>
             </div>
           )}
         </div>
@@ -609,13 +627,20 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           })}
         </div>
 
-        <div className="fw-side-title pixel">Opponents</div>
+        <div className="fw-side-title pixel">
+          {dead ? "Watch a board" : "Opponents"}
+        </div>
         <div className="tetris-opps">
           {opponents.map((op) => {
             const b = boardsById.get(op.id);
             const alive = seat.tetrisAlive.includes(op.id);
             return (
-              <div key={op.id} className={`tetris-opp${alive ? "" : " out"}`}>
+              <div
+                key={op.id}
+                className={`tetris-opp${alive ? "" : " out"}${dead ? " watchable" : ""}${spectateId === op.id ? " watching" : ""}`}
+                onClick={dead ? () => setSpectateId((cur) => (cur === op.id ? null : op.id)) : undefined}
+                role={dead ? "button" : undefined}
+              >
                 <MiniBoard cells={b?.cells ?? ""} />
                 <div className="tetris-opp-name" style={{ color: op.color }}>
                   {op.nickname}
@@ -628,6 +653,16 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
       </div>
     </div>
   );
+}
+
+function SpectateBoard({ cells, rows }: { cells: string; rows: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const ctx = ref.current?.getContext("2d");
+    if (!ctx) return;
+    drawGrid(ctx, cells, CELL, rows);
+  }, [cells, rows]);
+  return <canvas ref={ref} width={COLS * CELL} height={rows * CELL} className="tetris-canvas" />;
 }
 
 function MiniBoard({ cells }: { cells: string }) {
