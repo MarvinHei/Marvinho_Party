@@ -4,6 +4,7 @@ import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { BattleStatePayload } from "@marvinho/shared";
 import { drawToken } from "./pixelChar.js";
+import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
 
@@ -16,6 +17,8 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
   const cursor = useRef({ x: 0, y: 0 }); // in tile coords
   const [, setTick] = useState(0);
   const diedRef = useRef(false);
+  const smoother = useRef(new PosSmoother());
+  const lastT = useRef(performance.now());
 
   const init = battle?.init;
   const cols = init?.cols ?? 34;
@@ -100,6 +103,9 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
     let raf = 0;
     const draw = () => {
       const s = snapRef.current;
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastT.current) / 1000);
+      lastT.current = now;
       ctx.fillStyle = "#141126";
       ctx.fillRect(0, 0, W, H);
       // Walls.
@@ -114,11 +120,15 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
         }
       }
       const me = s?.players.find((p) => p.id === seat.playerId) ?? null;
-      // Players.
+      let meDisp: { x: number; y: number } | null = null;
+      // Players (positions smoothed between snapshots).
       if (s) {
+        smoother.current.begin();
         for (const p of s.players) {
-          const px = p.x * TILE;
-          const py = p.y * TILE;
+          const sp = smoother.current.step(p.id, p.x, p.y, dt, 0.06);
+          if (p.id === seat.playerId) meDisp = sp;
+          const px = sp.x * TILE;
+          const py = sp.y * TILE;
           drawToken(ctx, px, py, TILE * 0.9, p.color, {
             me: p.id === seat.playerId,
             alive: p.alive,
@@ -130,14 +140,15 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
           ctx.textBaseline = "bottom";
           ctx.fillText(p.id === seat.playerId ? "YOU" : p.name, px, py - TILE * 0.5 - 4);
         }
+        smoother.current.end();
         // Aim barrel from me toward the cursor.
-        if (me && me.alive) {
-          const ang = Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x);
+        if (me && me.alive && meDisp) {
+          const ang = Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
           ctx.strokeStyle = "#ffd23f";
           ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.moveTo(me.x * TILE, me.y * TILE);
-          ctx.lineTo((me.x + Math.cos(ang) * 0.9) * TILE, (me.y + Math.sin(ang) * 0.9) * TILE);
+          ctx.moveTo(meDisp.x * TILE, meDisp.y * TILE);
+          ctx.lineTo((meDisp.x + Math.cos(ang) * 0.9) * TILE, (meDisp.y + Math.sin(ang) * 0.9) * TILE);
           ctx.stroke();
         }
         // Bullets.

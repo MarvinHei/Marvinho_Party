@@ -4,6 +4,7 @@ import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { RunnerObstacle, RunnerStatePayload } from "@marvinho/shared";
 import { shadeHex, roundRect } from "./pixelChar.js";
+import { smoothTowards } from "./interp.js";
 
 const TILE = 26;
 
@@ -175,6 +176,11 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
   const lastState = useRef({ dir: 0, duck: false });
   const [, setTick] = useState(0);
   const diedRef = useRef(false);
+  // Smoothing: a global camera-distance ease (so the scroll is fluid) plus a
+  // per-player vertical ease (so jumps don't step).
+  const dispDist = useRef<number | null>(null);
+  const hSmooth = useRef<Map<string, number>>(new Map());
+  const lastT = useRef(performance.now());
 
   const init = runner?.init;
   const viewW = init?.viewW ?? 26;
@@ -264,7 +270,19 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
     const draw = () => {
       const s = snapRef.current;
       const now = performance.now();
-      const dist = s?.dist ?? 0;
+      const dt = Math.min(0.05, (now - lastT.current) / 1000);
+      lastT.current = now;
+      // Ease the camera distance so the scroll is fluid between 30 Hz snapshots.
+      const rawDist = s?.dist ?? 0;
+      if (dispDist.current === null || Math.abs(rawDist - dispDist.current) > 40) {
+        dispDist.current = rawDist;
+      } else {
+        dispDist.current = smoothTowards(dispDist.current, rawDist, dt, 0.05);
+      }
+      const dist = dispDist.current;
+      // Everything in screen space is (worldX − rawDist); shift by this to draw
+      // it at the smoothed camera position instead.
+      const offset = rawDist - dist;
 
       // Sky.
       const sky = ctx.createLinearGradient(0, 0, 0, groundY);
@@ -303,28 +321,39 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
       }
 
       if (s) {
-        for (const o of s.obstacles) drawObstacle(ctx, o, groundY);
+        // Ease each player's height once per frame (smooth jump arcs).
+        for (const p of s.players) {
+          const prev = hSmooth.current.get(p.id);
+          const hd = prev === undefined || Math.abs(p.h - prev) > 1.5
+            ? p.h
+            : smoothTowards(prev, p.h, dt, 0.045);
+          hSmooth.current.set(p.id, hd);
+        }
+
+        for (const o of s.obstacles) drawObstacle(ctx, { ...o, x: o.x + offset }, groundY);
 
         // Shockwave bursts (all players), then the characters on top.
         for (const p of s.players) {
           if (p.boomAge >= 0 && p.boomAge < 480) {
             const t = p.boomAge / 480;
+            const hd = hSmooth.current.get(p.id) ?? p.h;
             ctx.strokeStyle = `rgba(255,210,63,${(1 - t) * 0.9})`;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(p.x * TILE, groundY - p.h * TILE - TILE * 0.7, t * 4.2 * TILE, 0, Math.PI * 2);
+            ctx.arc((p.x + offset) * TILE, groundY - hd * TILE - TILE * 0.7, t * 4.2 * TILE, 0, Math.PI * 2);
             ctx.stroke();
           }
         }
 
         const phase = now / 90;
         for (const p of s.players) {
-          const footX = p.x * TILE;
-          const footY = groundY - p.h * TILE;
+          const hd = hSmooth.current.get(p.id) ?? p.h;
+          const footX = (p.x + offset) * TILE;
+          const footY = groundY - hd * TILE;
           const isMe = p.id === seat.playerId;
           drawChar(ctx, footX, footY, groundY, p.color, {
             ducking: p.ducking,
-            airborne: p.h > 0.05,
+            airborne: hd > 0.05,
             isMe,
             phase: phase + footX,
             alive: p.alive,

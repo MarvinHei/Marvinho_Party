@@ -3,6 +3,7 @@ import { store } from "../state/store.js";
 import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { PongStatePayload } from "@marvinho/shared";
+import { smoothTowards } from "./interp.js";
 
 const W = 900;
 const H = 520;
@@ -25,6 +26,10 @@ export function PongPanel({ seat }: { seat: SeatState }) {
   const particles = useRef<Particle[]>([]);
   const prevBall = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const lastT = useRef(performance.now());
+  // Smoothed (interpolated) display positions, so 30 Hz snapshots render at
+  // the full frame rate instead of stepping.
+  const dispBall = useRef<{ x: number; y: number } | null>(null);
+  const dispPad = useRef<{ l: number; r: number } | null>(null);
 
   const side = pong?.init.side ?? "left";
 
@@ -82,8 +87,14 @@ export function PongPanel({ seat }: { seat: SeatState }) {
 
       const selfColor = pong?.init.self.color ?? "#ffd23f";
       const oppColor = pong?.init.opponent.color ?? "#8a8aa8";
-      const padL = side === "left" ? localPad.current : (s?.padL ?? 0.5);
-      const padR = side === "right" ? localPad.current : (s?.padR ?? 0.5);
+      // Smooth the server-driven (opponent) paddle; our own stays predicted.
+      const rawPadL = s?.padL ?? 0.5;
+      const rawPadR = s?.padR ?? 0.5;
+      if (!dispPad.current) dispPad.current = { l: rawPadL, r: rawPadR };
+      dispPad.current.l = smoothTowards(dispPad.current.l, rawPadL, dt, 0.04);
+      dispPad.current.r = smoothTowards(dispPad.current.r, rawPadR, dt, 0.04);
+      const padL = side === "left" ? localPad.current : dispPad.current.l;
+      const padR = side === "right" ? localPad.current : dispPad.current.r;
       const colL = side === "left" ? selfColor : oppColor;
       const colR = side === "right" ? selfColor : oppColor;
       drawPaddle(ctx, PAD_X_L * W, padL * H, colL);
@@ -99,12 +110,15 @@ export function PongPanel({ seat }: { seat: SeatState }) {
           if (dx !== 0 || dy !== 0) {
             // Ignore big jumps (a point reset re-centers the ball).
             if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) {
+              // Spawn at the drawn (smoothed) ball so bursts stay on the ball.
+              const bx = (dispBall.current?.x ?? s.ballX) * W;
+              const by = (dispBall.current?.y ?? s.ballY) * H;
               if (pb.vx !== 0 && Math.sign(dx) !== Math.sign(pb.vx) && (s.ballX < 0.14 || s.ballX > 0.86)) {
-                spawnBurst(s.ballX * W, s.ballY * H, s.ballX < 0.5 ? colL : colR);
+                spawnBurst(bx, by, s.ballX < 0.5 ? colL : colR);
                 sfx("bounce");
               }
               if (pb.vy !== 0 && Math.sign(dy) !== Math.sign(pb.vy) && (s.ballY < 0.06 || s.ballY > 0.94)) {
-                spawnBurst(s.ballX * W, s.ballY * H, "#dfe6ff");
+                spawnBurst(bx, by, "#dfe6ff");
                 sfx("bounceWall");
               }
             }
@@ -115,11 +129,19 @@ export function PongPanel({ seat }: { seat: SeatState }) {
         }
       }
 
-      // Ball.
+      // Ball (smoothed; snaps on a point reset that re-centers it).
       if (s) {
+        let d = dispBall.current;
+        if (!d || Math.abs(s.ballX - d.x) > 0.2 || Math.abs(s.ballY - d.y) > 0.2) {
+          d = { x: s.ballX, y: s.ballY };
+          dispBall.current = d;
+        } else {
+          d.x = smoothTowards(d.x, s.ballX, dt, 0.04);
+          d.y = smoothTowards(d.y, s.ballY, dt, 0.04);
+        }
         ctx.fillStyle = "#fff";
         ctx.beginPath();
-        ctx.arc(s.ballX * W, s.ballY * H, BALL_R * H, 0, Math.PI * 2);
+        ctx.arc(d.x * W, d.y * H, BALL_R * H, 0, Math.PI * 2);
         ctx.fill();
       }
 

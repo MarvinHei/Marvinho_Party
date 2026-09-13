@@ -4,6 +4,7 @@ import { sfx } from "../audio/audio.js";
 import type { SeatState } from "../state/types.js";
 import type { HideStatePayload } from "@marvinho/shared";
 import { drawToken, drawKnife } from "./pixelChar.js";
+import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
 const VISION = 7; // must match the server
@@ -20,6 +21,8 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   // Local seeker aim + knife-stab animation (cursor is in tile coords).
   const cursor = useRef({ x: 0, y: 0 });
   const stab = useRef({ at: -1, angle: 0 });
+  const smoother = useRef(new PosSmoother());
+  const lastT = useRef(performance.now());
 
   const init = hide?.init;
   const isSeeker = init?.role === "seeker";
@@ -121,19 +124,24 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           }
         }
       }
-      const me = s?.players.find((p) => p.id === seat.playerId) ?? null;
       const now = performance.now();
-      // Players — the same pixel characters as on the board.
+      const dt = Math.min(0.05, (now - lastT.current) / 1000);
+      lastT.current = now;
+      let meDisp: { x: number; y: number } | null = null;
+      // Players — the same pixel characters as on the board (smoothed).
       if (s) {
+        smoother.current.begin();
         for (const p of s.players) {
-          const px = p.x * TILE;
-          const py = p.y * TILE;
+          const sp = smoother.current.step(p.id, p.x, p.y, dt, 0.06);
           const isMe = p.id === seat.playerId;
+          if (isMe) meDisp = sp;
+          const px = sp.x * TILE;
+          const py = sp.y * TILE;
           drawToken(ctx, px, py, TILE * 0.86, p.color, { me: isMe, alive: !p.caught });
 
           // Seeker carries a knife; the local seeker's thrusts are animated.
           if (p.role === "seeker" && !p.caught) {
-            let angle = isMe ? Math.atan2(cursor.current.y - p.y, cursor.current.x - p.x) : 0;
+            let angle = isMe ? Math.atan2(cursor.current.y - sp.y, cursor.current.x - sp.x) : 0;
             let reach = TILE * 0.5;
             if (isMe && stab.current.at >= 0) {
               const prog = (now - stab.current.at) / STAB_MS;
@@ -154,12 +162,13 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           ctx.textBaseline = "bottom";
           ctx.fillText(isMe ? "YOU" : p.name, px, py - TILE * 0.48 - 2);
         }
+        smoother.current.end();
       }
       // Seeker fog: darken beyond the vision radius.
-      if (isSeeker && me) {
+      if (isSeeker && meDisp) {
         const grad = ctx.createRadialGradient(
-          me.x * TILE, me.y * TILE, VISION * TILE * 0.55,
-          me.x * TILE, me.y * TILE, VISION * TILE,
+          meDisp.x * TILE, meDisp.y * TILE, VISION * TILE * 0.55,
+          meDisp.x * TILE, meDisp.y * TILE, VISION * TILE,
         );
         grad.addColorStop(0, "rgba(6,5,20,0)");
         grad.addColorStop(1, "rgba(6,5,20,0.82)");
