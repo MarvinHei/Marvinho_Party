@@ -59,6 +59,19 @@ export function HidePanel({ seat }: { seat: SeatState }) {
     };
     const down = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      if (key === " " || key === "spacebar") {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (isSeeker && snapRef.current?.released) {
+          const me = snapRef.current.players.find((p) => p.id === seat.playerId);
+          if (me) {
+            stab.current = { at: performance.now(), angle: Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x) };
+          }
+          store.net(seat.id)?.hideStab();
+          sfx("stab");
+        }
+        return;
+      }
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
         e.preventDefault();
         keys.current.add(key);
@@ -81,7 +94,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [seat.id]);
+  }, [seat.id, seat.playerId, isSeeker]);
 
   // Render loop.
   useEffect(() => {
@@ -219,7 +232,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         {held
           ? "You're the seeker — get ready to hunt"
           : isSeeker
-            ? "WASD to move · click to stab a nearby hider"
+            ? "WASD to move · click or Space to stab a nearby hider"
             : "WASD to move · stay out of the seeker's sight"}
       </div>
     </div>

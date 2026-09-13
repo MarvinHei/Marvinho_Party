@@ -53,6 +53,18 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
     };
     const down = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      if (key === " " || key === "spacebar") {
+        e.preventDefault();
+        if (e.repeat) return;
+        const s = snapRef.current;
+        const me = s?.players.find((p) => p.id === seat.playerId);
+        if (me && me.alive) {
+          const ang = Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x);
+          store.net(seat.id)?.battleShoot(ang);
+          sfx("submit");
+        }
+        return;
+      }
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
         e.preventDefault();
         keys.current.add(key);
@@ -75,7 +87,7 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [seat.id]);
+  }, [seat.id, seat.playerId]);
 
   // Render loop.
   useEffect(() => {
@@ -186,7 +198,7 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
           </div>
         )}
       </div>
-      <div className="hide-hint pixel">WASD to move · aim with the mouse · click to shoot</div>
+      <div className="hide-hint pixel">WASD to move · aim with the mouse · click or Space to shoot</div>
     </div>
   );
 }
