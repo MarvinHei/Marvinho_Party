@@ -1,7 +1,26 @@
-import { PLAYER_COLORS, defaultAppearance, sanitizeAppearance, type Appearance } from "@marvinho/shared";
+import {
+  HAIR_COLORS,
+  HAIR_STYLES,
+  MOUTH_STYLES,
+  PLAYER_COLORS,
+  sanitizeAppearance,
+  type Appearance,
+} from "@marvinho/shared";
 
 // The player's chosen character look, remembered across sessions.
 const KEY = "marvinho.appearance";
+
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+/** A fully random character look. */
+export function randomAppearance(): Appearance {
+  return {
+    color: pick(PLAYER_COLORS),
+    hair: Math.floor(Math.random() * HAIR_STYLES),
+    hairColor: pick(HAIR_COLORS),
+    mouth: Math.floor(Math.random() * MOUTH_STYLES),
+  };
+}
 
 export function loadAppearance(): Appearance {
   try {
@@ -10,11 +29,8 @@ export function loadAppearance(): Appearance {
   } catch {
     /* ignore */
   }
-  // First time: start from a random body colour so players don't all match.
-  const a: Appearance = {
-    ...defaultAppearance(),
-    color: PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)],
-  };
+  // First time (or no customization): a random look, shown and used as-is.
+  const a = randomAppearance();
   saveAppearance(a);
   return a;
 }

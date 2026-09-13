@@ -4,6 +4,7 @@ import type { SeatState } from "../state/types.js";
 import { LobbySettingsPanel } from "./LobbySettingsPanel.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import { LobbyBackdrop } from "./LobbyBackdrop.js";
+import { TokenAvatar } from "./TokenAvatar.js";
 
 export function LobbyScreen({ seat }: { seat: SeatState }) {
   const [busy, setBusy] = useState(false);
@@ -79,7 +80,7 @@ export function LobbyScreen({ seat }: { seat: SeatState }) {
           <div className="player-list">
             {lobby.players.map((p) => (
               <div key={p.id} className={`player-row${p.connected ? "" : " offline"}`}>
-                <span className="swatch" style={{ background: p.color }} />
+                <TokenAvatar appearance={p.appearance} size={34} me={p.id === seat.playerId} />
                 <span className="player-name">{p.nickname}</span>
                 {p.id === seat.playerId && <span style={{ color: "var(--ink-dim)" }}>(you)</span>}
                 {p.isHost && <span className="host-tag">HOST</span>}

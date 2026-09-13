@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   HAIR_COLORS,
   HAIR_STYLES,
@@ -7,6 +7,7 @@ import {
   type Appearance,
 } from "@marvinho/shared";
 import { drawToken } from "./pixelChar.js";
+import { randomAppearance } from "../state/appearance.js";
 import { sfx } from "../audio/audio.js";
 
 const HAIR_NAMES = ["Bald", "Short", "Spiky", "Bowl", "Mohawk", "Afro", "Swoop"];
@@ -21,6 +22,7 @@ export function CharacterCreator({
   onChange: (a: Appearance) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -43,7 +45,29 @@ export function CharacterCreator({
 
   return (
     <div className="charcreator">
-      <canvas ref={canvasRef} width={124} height={124} className="cc-preview" aria-label="Character preview" />
+      <div className="cc-head">
+        <canvas ref={canvasRef} width={124} height={124} className="cc-preview" aria-label="Character preview" />
+        <div className="cc-head-actions">
+          <button
+            type="button"
+            className="cc-btn"
+            onClick={() => { sfx("place"); onChange(randomAppearance()); }}
+          >
+            🎲 Randomize
+          </button>
+          <button
+            type="button"
+            className="cc-btn"
+            onClick={() => { sfx("click"); setExpanded((v) => !v); }}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Done ▲" : "Customize ▾"}
+          </button>
+          {!expanded && <span className="cc-hint">Random look — customize if you like</span>}
+        </div>
+      </div>
+
+      {expanded && (
       <div className="cc-controls">
         <div className="cc-row">
           <span className="cc-label">Colour</span>
@@ -97,6 +121,7 @@ export function CharacterCreator({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
