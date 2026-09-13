@@ -72,7 +72,9 @@ export function GuessCountryPanel({ seat }: { seat: SeatState }) {
             <div key={s.playerId} className={`p-standing${s.solved ? " solved" : ""}`}>
               <span className="swatch" style={{ background: s.color }} />
               <span className="sk-nick">{s.nickname}</span>
-              <span className="p-rank">{s.solved ? `#${(s.rank ?? 0) + 1}` : `${s.tries}·`}</span>
+              <span className="p-rank">
+                {s.solved ? `#${(s.rank ?? 0) + 1} · ${s.tries} ${s.tries === 1 ? "try" : "tries"}` : `${s.tries}·`}
+              </span>
             </div>
           ))}
         </div>

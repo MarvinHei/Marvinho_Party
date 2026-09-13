@@ -153,7 +153,9 @@ export function WordlePanel({ seat }: { seat: SeatState }) {
             <span className="swatch" style={{ background: s.color }} />
             <span>{s.nickname}</span>
             <span className="dots">
-              {s.solved ? "SOLVED" : `${s.guessesUsed}/${w.maxGuesses}`}
+              {s.solved
+                ? `✓ ${s.guessesUsed} ${s.guessesUsed === 1 ? "guess" : "guesses"}`
+                : `${s.guessesUsed}/${w.maxGuesses}`}
             </span>
           </div>
         ))}

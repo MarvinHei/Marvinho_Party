@@ -231,7 +231,7 @@ export function TravlePanel({ seat }: { seat: SeatState }) {
             <div key={s.playerId} className={`p-standing${s.connected ? " solved" : ""}`}>
               <span className="swatch" style={{ background: s.color }} />
               <span className="sk-nick">{s.nickname}</span>
-              <span className="p-rank">{s.connected ? `#${(s.rank ?? 0) + 1}` : `${s.count}`}</span>
+              <span className="p-rank">{s.connected ? `#${(s.rank ?? 0) + 1} · ${s.count}` : `${s.count}`}</span>
             </div>
           ))}
         </div>
