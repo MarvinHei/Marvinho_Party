@@ -35,7 +35,10 @@ export function HomeBackdrop() {
     let h = 0;
     let dpr = 1;
     const resize = () => {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      // Cap at 1: this is a soft, half-opacity decorative layer, so it doesn't
+      // need retina pixels — and keeping the per-frame fill cheap avoids
+      // stealing main-thread time from the intro animation.
+      dpr = 1;
       w = window.innerWidth;
       h = window.innerHeight;
       canvas.width = Math.round(w * dpr);
@@ -48,7 +51,9 @@ export function HomeBackdrop() {
 
     const start = performance.now();
     let train: Train | null = null;
-    let nextAt = 1.2; // seconds until the first train
+    // Hold the first conga line until the intro slide-ins have landed, so the
+    // busiest moment of the intro isn't sharing the frame budget.
+    let nextAt = 5;
 
     const spawnTrain = (t: number): Train => {
       const dir = Math.random() < 0.5 ? 1 : -1;

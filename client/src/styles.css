@@ -2794,6 +2794,12 @@ input[type="text"]:focus {
 }
 /* Timed to unfold across the full length of the ~6.6s opening theme: title/box
    glide in first, then the description and music control rise in to finish. */
+/* Promote to their own compositor layer so the slide-in runs on the GPU
+   thread, independent of the background canvas's main-thread drawing. */
+.intro-left, .intro-right, .intro-up {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
 .intro-left  { animation: introFromLeft 2.8s cubic-bezier(0.4, 0.05, 0.2, 1) 0.2s both; }
 .intro-right { animation: introFromRight 2.8s cubic-bezier(0.4, 0.05, 0.2, 1) 0.5s both; }
 .intro-up    { animation: introFromBelow 2.5s cubic-bezier(0.4, 0.05, 0.2, 1) 3.4s both; }
