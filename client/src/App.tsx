@@ -46,6 +46,7 @@ export function App() {
     <div className="app">
       {DEBUG_FEATURE_ENABLED && <DebugBar />}
       <MusicControl />
+      {active && active.screen === "game" && !active.lobby?.sandbox && <QuitButton seat={active} />}
       {!active ? (
         <div className="center-stage">
           <div className="panel">
@@ -60,5 +61,21 @@ export function App() {
         <GameScreen seat={active} />
       )}
     </div>
+  );
+}
+
+function QuitButton({ seat }: { seat: import("./state/types.js").SeatState }) {
+  return (
+    <button
+      className="quit-btn"
+      title="Leave the game"
+      onClick={() => {
+        if (!window.confirm("Leave the game? You'll return to the home screen.")) return;
+        store.net(seat.id)?.leave();
+        window.location.href = window.location.origin;
+      }}
+    >
+      ⏻ Quit
+    </button>
   );
 }

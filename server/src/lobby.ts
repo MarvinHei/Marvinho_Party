@@ -78,6 +78,8 @@ const teamColor = (t: CodenamesTeam) => (t === "a" ? "#e6394b" : "#3aa0ff");
 const COUNTDOWN_MS = 5000;
 /** Fallback: auto-confirm the podium if the host never does (ms). */
 const RESULTS_MS = 45000;
+/** Grace window to reclaim a seat after a disconnect before leaving the round (ms). */
+const GRACE_MS = 12000;
 /** How long the board-advance animation runs after the host confirms (ms). */
 const ADVANCE_MS = 4200;
 /** How long the on-board winner celebration plays before the win screen (ms). */
@@ -134,6 +136,10 @@ export class Lobby {
   private awaitingConfirm = false;
   /** Set when this round produced a winner: celebrate + win screen after the hops. */
   private pendingWinnerId: string | null = null;
+  /** Deferred round-removal per disconnected player, cancelled if they resume. */
+  private graceTimers = new Map<string, NodeJS.Timeout>();
+  /** Re-sends the active minigame's init/state to a resuming socket. */
+  private resendActive: ((socketId: string, playerId: string) => void) | null = null;
   /** How long the (sequential) board advance runs for this round's rewards (ms). */
   private lastAdvanceMs = ADVANCE_MS;
   private timers: NodeJS.Timeout[] = [];
@@ -218,8 +224,15 @@ export class Lobby {
     if (!player) throw new Error("Your seat has expired — join again.");
     player.socketId = socketId;
     player.connected = true;
-    // A returning host stays host; otherwise leave the current host as-is.
+    // Cancel the pending round-removal — they're back in time.
+    const grace = this.graceTimers.get(playerId);
+    if (grace) {
+      clearTimeout(grace);
+      this.graceTimers.delete(playerId);
+    }
     this.broadcastLobby();
+    // Re-send the active minigame so the client re-enters it (not just the board).
+    if (this.phase === "minigame") this.resendActive?.(socketId, playerId);
   }
 
   /** Change a player's character look (lobby phase only). */
@@ -242,7 +255,71 @@ export class Lobby {
       player.connected = false;
       player.socketId = null;
       player.ready = false;
-      if (this.phase === "minigame" && this.wordle) {
+      // Give a quick refresh / reconnect a grace window to reclaim the seat
+      // before we actually remove the player from the running round.
+      const existing = this.graceTimers.get(playerId);
+      if (existing) clearTimeout(existing);
+      this.graceTimers.set(
+        playerId,
+        setTimeout(() => {
+          this.graceTimers.delete(playerId);
+          if (!this.players.get(playerId)?.connected) this.finalizeDisconnect(playerId);
+        }, GRACE_MS),
+      );
+    }
+
+    if (this.hostId === playerId) {
+      const next = this.connectedPlayers()[0];
+      if (next) {
+        next.isHost = true;
+        this.hostId = next.id;
+      }
+    }
+
+    if (!this.hasConnectedPlayers()) {
+      this.dispose();
+      this.onEmpty?.();
+      return;
+    }
+    this.broadcastLobby();
+    this.maybeStartFromReady();
+  }
+
+  /** An intentional Quit: remove the player from the round and the lobby now
+   *  (no grace window — they chose to leave). */
+  quit(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    const grace = this.graceTimers.get(playerId);
+    if (grace) {
+      clearTimeout(grace);
+      this.graceTimers.delete(playerId);
+    }
+    player.connected = false;
+    player.socketId = null;
+    if (this.phase === "minigame") this.finalizeDisconnect(playerId);
+    this.players.delete(playerId);
+    if (this.hostId === playerId) {
+      const next = this.connectedPlayers()[0];
+      if (next) {
+        next.isHost = true;
+        this.hostId = next.id;
+      }
+    }
+    if (!this.hasConnectedPlayers()) {
+      this.dispose();
+      this.onEmpty?.();
+      return;
+    }
+    this.broadcastLobby();
+    this.maybeStartFromReady();
+  }
+
+  /** After the grace window, actually remove a still-disconnected player from
+   *  the active round (so it can resolve / not hang). */
+  private finalizeDisconnect(playerId: string): void {
+    if (this.phase === "minigame") {
+      if (this.wordle) {
         this.wordle.finishPlayer(playerId);
         this.emitStandings();
         this.maybeEndWordle();
@@ -287,20 +364,6 @@ export class Lobby {
         this.emitTravleStandings();
         if (this.travle.isComplete()) this.endTravle();
       }
-    }
-
-    if (this.hostId === playerId) {
-      const next = this.connectedPlayers()[0];
-      if (next) {
-        next.isHost = true;
-        this.hostId = next.id;
-      }
-    }
-
-    if (!this.hasConnectedPlayers()) {
-      this.dispose();
-      this.onEmpty?.();
-      return;
     }
     this.broadcastLobby();
     this.maybeStartFromReady();
@@ -670,6 +733,13 @@ export class Lobby {
       },
     });
     this.emitStandings();
+    this.resendActive = (sid) => {
+      this.io.to(sid).emit("minigame:start", {
+        type: "wordle",
+        wordle: { wordLength: WORDLE_CONFIG.wordLength, maxGuesses: WORDLE_CONFIG.maxGuesses, roundSeconds: seconds, endsAt },
+      });
+      this.emitStandings();
+    };
 
     this.schedule(() => {
       if (this.wordle) {
@@ -755,6 +825,10 @@ export class Lobby {
 
     this.io.to(this.id).emit("minigame:start", { type: "codenames" });
     this.broadcastCodenames();
+    this.resendActive = (sid, pid) => {
+      this.io.to(sid).emit("minigame:start", { type: "codenames" });
+      if (this.codenames) this.io.to(sid).emit("codenames:state", this.codenames.viewFor(pid));
+    };
 
     this.schedule(() => {
       if (this.codenames) {
@@ -861,6 +935,10 @@ export class Lobby {
     this.skribbl = new SkribblGame(players, this.roundSecondsFor("skribbl"));
     this.io.to(this.id).emit("minigame:start", { type: "skribbl" });
     this.nextSkribblTurn();
+    this.resendActive = (sid, pid) => {
+      this.io.to(sid).emit("minigame:start", { type: "skribbl" });
+      if (this.skribbl) this.io.to(sid).emit("skribbl:state", this.skribbl.viewFor(pid));
+    };
   }
 
   private nextSkribblTurn(): void {
@@ -964,6 +1042,10 @@ export class Lobby {
     this.skribblTeams = new SkribblTeamsGame(teams, players, this.roundSecondsFor("skribblteams"));
     this.io.to(this.id).emit("minigame:start", { type: "skribblteams" });
     this.nextSkribblTeamsRound();
+    this.resendActive = (sid, pid) => {
+      this.io.to(sid).emit("minigame:start", { type: "skribblteams" });
+      if (this.skribblTeams) this.io.to(sid).emit("skribblteams:state", this.skribblTeams.viewFor(pid));
+    };
   }
 
   private nextSkribblTeamsRound(): void {
@@ -1070,6 +1152,10 @@ export class Lobby {
     this.findword = new FindWordGame(teams, players, this.roundSecondsFor("findword"));
     this.io.to(this.id).emit("minigame:start", { type: "findword" });
     this.broadcastFindword();
+    this.resendActive = (sid, pid) => {
+      this.io.to(sid).emit("minigame:start", { type: "findword" });
+      if (this.findword) this.io.to(sid).emit("findword:state", this.findword.viewFor(pid));
+    };
     // Poll for per-team attempt deadlines.
     this.interval = setInterval(() => {
       if (!this.findword) return;
@@ -1136,6 +1222,18 @@ export class Lobby {
       cols: TETRIS_CONFIG.cols,
     });
     this.broadcastTetrisPlayers();
+    this.resendActive = (sid) => {
+      if (!this.tetris) return;
+      this.io.to(sid).emit("minigame:start", { type: "tetris" });
+      this.io.to(sid).emit("tetris:init", {
+        players: this.tetris.players(),
+        seed: this.tetris.seed,
+        startsAt: Date.now() + 600,
+        rows: this.settings.tetrisRows,
+        cols: TETRIS_CONFIG.cols,
+      });
+      this.broadcastTetrisPlayers();
+    };
     // Hard time cap.
     this.schedule(() => {
       if (this.tetris) this.endTetris();
@@ -1225,6 +1323,11 @@ export class Lobby {
     this.io.to(this.id).emit("minigame:start", { type: game });
     this.io.to(this.id).emit("puzzle:start", { game, spec, endsAt, roundSeconds: seconds });
     this.emitPuzzleStandings();
+    this.resendActive = (sid) => {
+      this.io.to(sid).emit("minigame:start", { type: game });
+      this.io.to(sid).emit("puzzle:start", { game, spec, endsAt, roundSeconds: seconds });
+      this.emitPuzzleStandings();
+    };
 
     this.schedule(() => {
       if (this.puzzle) {
@@ -1308,6 +1411,16 @@ export class Lobby {
       maxTries: 8,
     });
     this.emitGeoStandings();
+    this.resendActive = (sid) => {
+      this.io.to(sid).emit("minigame:start", { type: "guesscountry" });
+      this.io.to(sid).emit("guesscountry:start", {
+        geometry: WORLD_GEOMETRY[answer.code],
+        endsAt,
+        roundSeconds: seconds,
+        maxTries: 8,
+      });
+      this.emitGeoStandings();
+    };
 
     this.schedule(() => {
       if (this.guessCountry) {
@@ -1410,6 +1523,11 @@ export class Lobby {
     this.io.to(this.id).emit("minigame:start", { type: "travle" });
     this.io.to(this.id).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
     this.emitTravleStandings();
+    this.resendActive = (sid) => {
+      this.io.to(sid).emit("minigame:start", { type: "travle" });
+      this.io.to(sid).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
+      this.emitTravleStandings();
+    };
 
     this.schedule(() => {
       if (this.travle) {
@@ -1506,6 +1624,19 @@ export class Lobby {
         vsCpu: init.vsCpu,
       });
     }
+    this.resendActive = (sid, pid) => {
+      const init = this.pong?.initFor(pid);
+      this.io.to(sid).emit("minigame:start", { type: "pong" });
+      if (init) {
+        this.io.to(sid).emit("pong:init", {
+          side: init.side,
+          target: this.settings.pongPoints,
+          self: { name: init.self.name, color: init.self.color },
+          opponent: { name: init.opponent.name, color: init.opponent.color },
+          vsCpu: init.vsCpu,
+        });
+      }
+    };
     // 30 Hz physics + per-player state broadcast.
     let last = Date.now();
     this.interval = setInterval(() => {
@@ -1588,6 +1719,20 @@ export class Lobby {
         appearances: this.lookRoster(),
       });
     }
+    this.resendActive = (sid, pid) => {
+      if (!this.hide) return;
+      this.io.to(sid).emit("minigame:start", { type: "verstecken" });
+      this.io.to(sid).emit("hide:init", {
+        cols: this.hide.arena.cols,
+        rows: this.hide.arena.rows,
+        walls: this.hide.encodedWalls(),
+        role: this.hide.roleOf(pid),
+        releaseAt: this.hide.releaseAt,
+        endsAt: this.hide.endsAt,
+        self: this.hide.infoOf(pid),
+        appearances: this.lookRoster(),
+      });
+    };
     let last = Date.now();
     this.interval = setInterval(() => {
       if (!this.hide) return;
@@ -1682,6 +1827,18 @@ export class Lobby {
         appearances: this.lookRoster(),
       });
     }
+    this.resendActive = (sid, pid) => {
+      if (!this.battle) return;
+      this.io.to(sid).emit("minigame:start", { type: "battle" });
+      this.io.to(sid).emit("battle:init", {
+        cols: this.battle.arena.cols,
+        rows: this.battle.arena.rows,
+        walls: this.battle.encodedWalls(),
+        endsAt: this.battle.endsAt,
+        self: this.battle.infoOf(pid),
+        appearances: this.lookRoster(),
+      });
+    };
     let last = Date.now();
     this.interval = setInterval(() => {
       if (!this.battle) return;
@@ -1760,6 +1917,19 @@ export class Lobby {
         appearances: this.lookRoster(),
       });
     }
+    this.resendActive = (sid, pid) => {
+      if (!this.runner) return;
+      this.io.to(sid).emit("minigame:start", { type: "runner" });
+      this.io.to(sid).emit("runner:init", {
+        viewW: this.runner.viewW,
+        viewH: this.runner.viewH,
+        groundH: this.runner.groundH,
+        shockCooldownMs: this.runner.shockCooldownMs,
+        endsAt: this.runner.endsAt,
+        self: this.runner.infoOf(pid),
+        appearances: this.lookRoster(),
+      });
+    };
     let last = Date.now();
     this.interval = setInterval(() => {
       if (!this.runner) return;
@@ -1974,5 +2144,7 @@ export class Lobby {
 
   dispose(): void {
     this.clearTimers();
+    for (const t of this.graceTimers.values()) clearTimeout(t);
+    this.graceTimers.clear();
   }
 }

@@ -416,7 +416,8 @@ io.on("connection", (socket) => {
 
   socket.on("lobby:leave", () => {
     if (session) {
-      manager.getLobby(session.lobbyId)?.removePlayer(session.playerId);
+      // Intentional leave: drop the seat immediately (no grace/reconnect).
+      manager.getLobby(session.lobbyId)?.quit(session.playerId);
       socket.leave(session.lobbyId);
       session = null;
     }
