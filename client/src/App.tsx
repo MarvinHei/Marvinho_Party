@@ -46,9 +46,12 @@ export function App() {
     <div className="app">
       {DEBUG_FEATURE_ENABLED && <DebugBar />}
       <MusicControl />
-      {active && active.screen === "game" && !active.lobby?.sandbox && <QuitButton seat={active} />}
-      {active && active.screen === "game" && !active.lobby?.sandbox &&
-        active.minigamePhase === "playing" && !active.forfeited && <ForfeitButton seat={active} />}
+      {active && active.screen === "game" && !active.lobby?.sandbox && (
+        <div className="game-hud-buttons">
+          <QuitButton seat={active} />
+          {active.minigamePhase === "playing" && !active.forfeited && <ForfeitButton seat={active} />}
+        </div>
+      )}
       {!active ? (
         <div className="center-stage">
           <div className="panel">

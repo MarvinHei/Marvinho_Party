@@ -231,7 +231,12 @@ class AudioManager {
     this.ensureGraph();
     if (!this.ctx || !this.musicGain) return;
     if (this.ctx.state === "suspended") void this.ctx.resume();
-    if (this.gameMusicUrl !== url) {
+    // Rebuild the element for a new track, OR when the SAME track is already the
+    // audible one — a fresh element lets us crossfade the repeat exactly like a
+    // track change (rather than the switch being a silent no-op).
+    const sameAudible =
+      this.gameMusicUrl === url && this.gameMusicEl != null && this.gameMusicEl === this.currentMusicEl;
+    if (this.gameMusicUrl !== url || sameAudible) {
       if (this.gameMusicEl && this.gameMusicEl !== this.currentMusicEl) {
         this.fadeOutPause(this.gameMusicEl);
       }
@@ -248,7 +253,8 @@ class AudioManager {
       this.gameMusicEl = el;
       this.gameMusicUrl = url;
     }
-    // Equal-power crossfade from the idle/opening loop to the game track.
+    // Equal-power crossfade from the idle/opening loop (or the prior instance of
+    // the same track) to the game track.
     this.switchMusic(this.gameMusicEl, true);
   }
 
