@@ -248,11 +248,11 @@ class AudioManager {
       this.gameMusicEl = el;
       this.gameMusicUrl = url;
     }
-    // Cross to the game track (fades out the idle/opening loop first, no overlap).
+    // Equal-power crossfade from the idle/opening loop to the game track.
     this.switchMusic(this.gameMusicEl, true);
   }
 
-  /** Fade out the game track and resume the idle background loop (no overlap). */
+  /** Crossfade the game track back into the idle background loop. */
   stopGameMusic() {
     if (this.unlocked) this.switchMusic(this.musicEl);
     else this.fadeOutPause(this.gameMusicEl);
@@ -260,6 +260,14 @@ class AudioManager {
 
   // --- fade helpers ------------------------------------------------------
   private fadeTimers = new WeakMap<HTMLAudioElement, number>();
+  private musicFade: number | null = null;
+
+  private cancelMusicFade() {
+    if (this.musicFade != null) {
+      clearInterval(this.musicFade);
+      this.musicFade = null;
+    }
+  }
 
   private cancelFade(el: HTMLAudioElement) {
     const id = this.fadeTimers.get(el);
@@ -297,20 +305,44 @@ class AudioManager {
   }
 
   /**
-   * Switch the audible music to `nextEl` with no overlap: fade the current track
-   * fully out first, then start the next one.
+   * Crossfade the audible music to `nextEl`. Uses an equal-power curve (sin/cos)
+   * so the perceived loudness stays constant through the overlap — seamless,
+   * with neither the gap of a fade-out-then-in nor the bump of a raw overlap.
    */
-  private switchMusic(nextEl: HTMLAudioElement | null, resetToStart = false) {
+  private switchMusic(nextEl: HTMLAudioElement | null, resetToStart = false, ms = 650) {
     const prev = this.currentMusicEl;
-    this.currentMusicEl = nextEl;
-    const start = () => {
-      if (nextEl) this.playEl(nextEl, resetToStart);
-    };
-    if (prev && prev !== nextEl && !prev.paused) {
-      this.fadeOutPause(prev, 380, start); // old out, then new in — no overlap
-    } else {
-      start();
+    if (prev === nextEl) {
+      if (nextEl && nextEl.paused) this.playEl(nextEl, resetToStart);
+      return;
     }
+    this.currentMusicEl = nextEl;
+    this.cancelMusicFade();
+    if (prev) this.cancelFade(prev);
+    if (nextEl) {
+      this.cancelFade(nextEl);
+      nextEl.volume = 0;
+      if (resetToStart) {
+        try { nextEl.currentTime = 0; } catch { /* ignore */ }
+      }
+      void nextEl.play().catch(() => { /* likely not unlocked yet */ });
+    }
+    const prevPlaying = !!prev && !prev.paused;
+    const steps = 26;
+    let i = 0;
+    this.musicFade = window.setInterval(() => {
+      i++;
+      const t = Math.min(1, i / steps);
+      if (nextEl) nextEl.volume = Math.sin((t * Math.PI) / 2);
+      if (prevPlaying && prev) prev.volume = Math.cos((t * Math.PI) / 2);
+      if (i >= steps) {
+        this.cancelMusicFade();
+        if (nextEl) nextEl.volume = 1;
+        if (prev && prev !== nextEl) {
+          prev.pause();
+          prev.volume = 1;
+        }
+      }
+    }, Math.max(12, ms / steps));
   }
 
   /** Play/resume at full element volume, cancelling any in-flight fade. */
