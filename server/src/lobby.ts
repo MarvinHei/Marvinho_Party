@@ -212,6 +212,16 @@ export class Lobby {
     this.broadcastLobby();
   }
 
+  /** Re-attach a fresh socket to an existing (disconnected) seat. */
+  resume(playerId: string, socketId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) throw new Error("Your seat has expired — join again.");
+    player.socketId = socketId;
+    player.connected = true;
+    // A returning host stays host; otherwise leave the current host as-is.
+    this.broadcastLobby();
+  }
+
   /** Change a player's character look (lobby phase only). */
   setAppearance(playerId: string, appearance: Appearance): void {
     if (this.phase !== "lobby") return;

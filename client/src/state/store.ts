@@ -67,13 +67,13 @@ class GameStore {
   /** Ensure at least one seat exists; returns the primary seat id. */
   ensurePrimarySeat(): string {
     if (this.snapshot.seats.length > 0) return this.snapshot.seats[0].id;
-    return this.addSeat("Player");
+    return this.addSeat("Player", true);
   }
 
-  addSeat(label: string): string {
+  addSeat(label: string, primary = false): string {
     const id = nextSeatId();
     const seat = initialSeat(id, label);
-    this.nets.set(id, new Net(id, this.makePatcher(id)));
+    this.nets.set(id, new Net(id, this.makePatcher(id), primary));
     this.commit({
       ...this.snapshot,
       seats: [...this.snapshot.seats, seat],

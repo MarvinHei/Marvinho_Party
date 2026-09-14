@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
 } from "@marvinho/shared";
 import { SERVER_URL } from "./config.js";
+import { clearSession, loadSession, saveSession, type Session } from "./session.js";
 import type { SeatState } from "../state/types.js";
 
 type SeatPatch = Partial<SeatState> | ((prev: SeatState) => Partial<SeatState>);
@@ -18,17 +19,33 @@ type SeatPatch = Partial<SeatState> | ((prev: SeatState) => Partial<SeatState>);
 export class Net {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   private garbageSeq = 0;
+  /** The seat this connection holds, for reconnect/refresh. */
+  private session: Session | null = null;
+  private resuming = false;
 
   constructor(
     readonly seatId: string,
     private patch: (patch: SeatPatch) => void,
+    /** Only the primary seat persists its session across a page refresh. */
+    private primary = false,
   ) {
     this.socket = io(SERVER_URL, { autoConnect: true, transports: ["websocket"] });
     this.wire();
   }
 
   private wire() {
-    this.socket.on("connect", () => this.patch({ connected: true }));
+    this.socket.on("connect", () => {
+      this.patch({ connected: true });
+      // On (re)connect, re-attach to our seat: the live one after a transient
+      // drop, or the stored one after a page refresh.
+      const s = this.session ?? (this.primary ? loadSession() : null);
+      if (s && !this.resuming) {
+        this.resuming = true;
+        this.resume(s.lobbyId, s.playerId)
+          .catch(() => { if (this.primary && !this.session) clearSession(); })
+          .finally(() => { this.resuming = false; });
+      }
+    });
     this.socket.on("disconnect", () => this.patch({ connected: false }));
 
     this.socket.on("lobby:update", (lobby) => {
@@ -40,6 +57,8 @@ export class Net {
 
     this.socket.on("lobby:kicked", () => {
       // The host removed us — return to the home screen with a notice.
+      this.session = null;
+      if (this.primary) clearSession();
       this.patch({
         lobby: null,
         playerId: null,
@@ -372,6 +391,9 @@ export class Net {
   }
 
   private adopt(data: JoinedLobby): JoinedLobby {
+    // Remember this seat so a reconnect / refresh can rejoin the same match.
+    this.session = { lobbyId: data.lobbyId, playerId: data.playerId };
+    if (this.primary) saveSession(this.session);
     // Record who this seat is so the UI can recognize itself (host, "you", etc.).
     // Navigate straight from the ack so we don't depend on a broadcast arriving
     // (the joining socket can miss the initial lobby:update before joining the room).
@@ -382,6 +404,15 @@ export class Net {
       screen: data.lobby.phase === "lobby" ? "lobby" : "game",
     });
     return data;
+  }
+
+  /** Re-attach to an existing seat (after a reconnect or page refresh). */
+  resume(lobbyId: string, playerId: string): Promise<JoinedLobby> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:resume", { lobbyId, playerId }, (res) =>
+        this.ack(res, (d) => resolve(this.adopt(d)), reject),
+      );
+    });
   }
 
   create(nickname: string, appearance?: import("@marvinho/shared").Appearance): Promise<JoinedLobby> {
@@ -602,6 +633,8 @@ export class Net {
 
   leave() {
     this.socket.emit("lobby:leave");
+    this.session = null;
+    if (this.primary) clearSession();
   }
 
   dispose() {

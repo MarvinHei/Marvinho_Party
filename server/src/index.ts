@@ -154,6 +154,19 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("lobby:resume", ({ lobbyId, playerId }, ack) => {
+    try {
+      const lobby = manager.getLobby(lobbyId);
+      if (!lobby) throw new Error("That match is no longer available.");
+      lobby.resume(playerId, socket.id);
+      session = { lobbyId: lobby.id, playerId };
+      socket.join(lobby.id);
+      ack({ ok: true, data: { lobbyId: lobby.id, playerId, lobby: lobby.toView() } });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
   socket.on("lobby:updateSettings", ({ settings }, ack) => {
     try {
       if (!session) throw new Error("Not in a lobby.");

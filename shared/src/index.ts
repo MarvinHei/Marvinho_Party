@@ -977,6 +977,12 @@ export interface ClientToServerEvents {
     ack: (res: Ack<JoinedLobby>) => void,
   ) => void;
 
+  /** Re-attach to an existing seat after a reconnect / page refresh. */
+  "lobby:resume": (
+    payload: { lobbyId: string; playerId: string },
+    ack: (res: Ack<JoinedLobby>) => void,
+  ) => void;
+
   /** Change this player's character look (only while in the lobby). */
   "lobby:setAppearance": (
     payload: { appearance: Appearance },
