@@ -411,18 +411,21 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (eng.dead) return;
       if (startsIn() > 0) return;
-      switch (e.key) {
+      switch (e.key.length === 1 ? e.key.toLowerCase() : e.key) {
         case "ArrowLeft":
+        case "a":
           e.preventDefault();
           eng.move(-1, 0);
           draw();
           break;
         case "ArrowRight":
+        case "d":
           e.preventDefault();
           eng.move(1, 0);
           draw();
           break;
         case "ArrowUp":
+        case "w":
         case "x":
           e.preventDefault();
           eng.rotate(1);
@@ -434,6 +437,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           draw();
           break;
         case "ArrowDown":
+        case "s":
           e.preventDefault();
           soft.on = true;
           break;
@@ -457,7 +461,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") soft.on = false;
+      if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") soft.on = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -561,7 +565,7 @@ export function TetrisPanel({ seat }: { seat: SeatState }) {
           )}
         </div>
         <div className="tetris-help hint">
-          ← → move · ↑ rotate · ↓ soft drop · Space hard drop · C hold
+          ←→/AD move · ↑/W rotate · ↓/S soft drop · Space hard drop · C hold
         </div>
 
         <div className="tetris-controls">

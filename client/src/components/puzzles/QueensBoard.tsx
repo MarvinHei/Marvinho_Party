@@ -58,6 +58,7 @@ export function QueensBoard({ puzzle, disabled, onSolved, view, onView }: Props)
   const moved = useRef(false);
   const startCell = useRef<number | null>(null);
   const eraseMode = useRef(false);
+  const enterRef = useRef<(i: number) => void>(() => {});
 
   function paintCell(i: number) {
     if (locked) return;
@@ -79,8 +80,21 @@ export function QueensBoard({ puzzle, disabled, onSolved, view, onView }: Props)
       moved.current = false;
       startCell.current = null;
     };
+    // Touch drags capture the pointer to the start cell, so pointerenter never
+    // fires on the cells under the finger — hit-test them ourselves instead.
+    const move = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      e.preventDefault();
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const attr = el?.closest("[data-qi]")?.getAttribute("data-qi");
+      if (attr != null) enterRef.current(Number(attr));
+    };
     window.addEventListener("pointerup", up);
-    return () => window.removeEventListener("pointerup", up);
+    window.addEventListener("pointermove", move, { passive: false });
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointermove", move);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked]);
 
@@ -101,6 +115,7 @@ export function QueensBoard({ puzzle, disabled, onSolved, view, onView }: Props)
     }
     paintCell(i);
   }
+  enterRef.current = onCellEnter;
 
   // Queens that clash: share a row, column or region, or touch (incl. diagonally).
   const queens: number[] = [];
@@ -143,6 +158,7 @@ export function QueensBoard({ puzzle, disabled, onSolved, view, onView }: Props)
       {cells.map((v, i) => (
         <div
           key={i}
+          data-qi={i}
           className={`queens-cell${v === 2 && bad.has(i) ? " conflict" : ""}`}
           style={{ background: REGION_COLORS[puzzle.regions[i] % REGION_COLORS.length], ...border(i), touchAction: "none" }}
           onPointerDown={() => onCellDown(i)}

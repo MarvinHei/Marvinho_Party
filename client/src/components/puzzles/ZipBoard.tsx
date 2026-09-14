@@ -26,6 +26,7 @@ export function ZipBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
   const locked = disabled || view !== undefined;
   const path = view ?? own;
   const dragging = useRef(false);
+  const dragToRef = useRef<(i: number) => void>(() => {});
   const onSolvedRef = useRef(onSolved);
   onSolvedRef.current = onSolved;
   const onViewRef = useRef(onView);
@@ -48,8 +49,20 @@ export function ZipBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
 
   useEffect(() => {
     const up = () => (dragging.current = false);
+    // Touch drags don't fire pointerenter on the cells under the finger; hit-test.
+    const move = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      e.preventDefault();
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const attr = el?.closest("[data-zi]")?.getAttribute("data-zi");
+      if (attr != null) dragToRef.current(Number(attr));
+    };
     window.addEventListener("pointerup", up);
-    return () => window.removeEventListener("pointerup", up);
+    window.addEventListener("pointermove", move, { passive: false });
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointermove", move);
+    };
   }, []);
 
   useEffect(() => {
@@ -90,6 +103,7 @@ export function ZipBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
       return [...prev, target];
     });
   }
+  dragToRef.current = dragTo;
 
   const pathSet = new Set(path);
   const head = path[path.length - 1];
@@ -113,7 +127,9 @@ export function ZipBoard({ puzzle, disabled, onSolved, view, onView }: Props) {
           return (
             <div
               key={i}
+              data-zi={i}
               className={`zip-cell${inPath ? " on" : ""}${i === head ? " head" : ""}`}
+              style={{ touchAction: "none" }}
               onPointerDown={() => {
                 dragging.current = true;
                 tapCell(i);
