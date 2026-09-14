@@ -541,7 +541,8 @@ input[type="text"]:focus {
 }
 .overlay .panel,
 .overlay .podium-card,
-.overlay .explain-card {
+.overlay .explain-card,
+.overlay .draft-card-wrap {
   pointer-events: auto;
 }
 .backdrop {
