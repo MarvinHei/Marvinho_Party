@@ -188,6 +188,23 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, W, H);
       }
+      // Radar pings (seeker only): pulsing markers over the fog.
+      if (s && s.pings.length) {
+        const pulse = (performance.now() % 1100) / 1100;
+        for (const ping of s.pings) {
+          const px = ping.x * TILE;
+          const py = ping.y * TILE;
+          ctx.strokeStyle = `rgba(255,80,80,${(1 - pulse) * 0.9})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(px, py, TILE * (0.4 + pulse * 1.6), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(255,80,80,0.95)";
+          ctx.beginPath();
+          ctx.arc(px, py, TILE * 0.16, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);

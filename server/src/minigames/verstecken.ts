@@ -11,10 +11,12 @@ import {
 const COLS = 34;
 const ROWS = 20;
 const HIDER_SPEED = 5.6; // tiles / second
-const SEEKER_SPEED = 6.4; // a touch faster so it can catch up
+const SEEKER_SPEED = 8.8; // much faster, so hiders must really use cover
 const RADIUS = 0.36;
 const CATCH_RANGE = 1.2; // tiles — how close a stab reaches
 const VISION = 7; // seeker sight radius (tiles)
+const PING_INTERVAL = 5000; // ms — seeker gets a radar ping of hiders this often
+const PING_SHOW_MS = 2200; // how long each ping stays on the seeker's screen
 
 interface HP {
   id: string;
@@ -49,6 +51,8 @@ export class HideRound {
   private players = new Map<string, HP>();
   private seekerId: string;
   private catches = 0;
+  private lastPingAt = 0;
+  private pingPositions: { x: number; y: number }[] = [];
 
   constructor(players: HidePlayer[], holdMs: number, roundMs: number) {
     this.arena = generateArena(COLS, ROWS);
@@ -127,6 +131,15 @@ export class HideRound {
       p.x = next.x;
       p.y = next.y;
     }
+    // Every few seconds, snapshot the hiders' positions as a radar ping.
+    const now = Date.now();
+    if (released && now - this.lastPingAt >= PING_INTERVAL) {
+      this.lastPingAt = now;
+      this.pingPositions = [];
+      for (const p of this.players.values()) {
+        if (p.role === "hider" && !p.caught) this.pingPositions.push({ x: p.x, y: p.y });
+      }
+    }
   }
 
   private aliveHiders(): number {
@@ -159,12 +172,16 @@ export class HideRound {
         caught: p.caught,
       });
     }
+    // The seeker sees a radar ping for a short window after each snapshot.
+    const pings =
+      isSeeker && Date.now() - this.lastPingAt < PING_SHOW_MS ? this.pingPositions : [];
     return {
       players: dots,
       released,
       aliveHiders: this.aliveHiders(),
       msLeft: Math.max(0, this.endsAt - Date.now()),
       meCaught: me?.caught ?? false,
+      pings,
     };
   }
 

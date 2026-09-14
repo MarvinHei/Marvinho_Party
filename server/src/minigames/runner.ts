@@ -19,8 +19,8 @@ const DUCK_H = 0.8;
 
 // --- movement ---
 const SCROLL0 = 5.0; // starting camera speed (tiles/s)
-const SCROLL_RAMP = 0.06; // per second
-const SCROLL_MAX = 9.5;
+const SCROLL_RAMP = 0.11; // per second — the track keeps getting faster
+const SCROLL_MAX = 15;
 const ACCEL = 15; // tiles/s^2 from holding accelerate/brake
 const EASE = 3.2; // how fast an idle player's speed relaxes toward the scroll
 const MAX_LEAD = VIEW_W - 4; // furthest right a player can pull ahead
@@ -38,9 +38,10 @@ const HIGH_H = VIEW_H - GROUND_H - HIGH_BOTTOM;
 
 // --- shockwave ---
 const SHOCK_CD = 5000; // ms
-const SHOCK_R = 4.2; // tiles
-const SHOCK_PUSH = 9.5; // horizontal impulse
-const SHOCK_POP = 6.0; // vertical impulse
+const SHOCK_R = 5.2; // tiles
+const SHOCK_PUSH = 34; // knockback velocity (tiles/s) — decays over KNOCK_TAU
+const SHOCK_POP = 11; // vertical impulse
+const KNOCK_TAU = 0.24; // knockback decay time constant (s)
 
 interface RP {
   id: string;
@@ -48,6 +49,7 @@ interface RP {
   color: string;
   x: number; // world x
   vx: number; // world x velocity
+  kx: number; // knockback velocity (from shockwaves; unclamped, decays)
   h: number; // height above ground
   vy: number; // vertical velocity
   dir: number; // -1 brake, 0 none, +1 accelerate
@@ -103,6 +105,7 @@ export class RunnerRound {
         color: p.color,
         x: startX,
         vx: SCROLL0,
+        kx: 0,
         h: 0,
         vy: 0,
         dir: 0,
@@ -149,11 +152,12 @@ export class RunnerRound {
       const dh = q.h - p.h;
       const d = Math.hypot(dx, dh);
       if (d > SHOCK_R) continue;
-      // Impulse away from the emitter, falling off with distance.
-      const falloff = 1 - d / SHOCK_R;
+      // Strong knockback away from the emitter (unclamped so it really shoves),
+      // falling off with distance.
+      const falloff = 0.4 + 0.6 * (1 - d / SHOCK_R);
       const ux = d < 0.001 ? (Math.random() < 0.5 ? -1 : 1) : dx / d;
-      q.vx += ux * SHOCK_PUSH * falloff;
-      if (q.h <= 0.02) q.vy = Math.max(q.vy, SHOCK_POP * falloff);
+      q.kx += ux * SHOCK_PUSH * falloff;
+      q.vy = Math.max(q.vy, SHOCK_POP * falloff);
     }
   }
 
@@ -203,7 +207,10 @@ export class RunnerRound {
         p.vx += (this.scroll - p.vx) * Math.min(1, EASE * dt);
       }
       p.vx = Math.max(this.scroll - V_SPREAD_LO, Math.min(this.scroll + V_SPREAD_HI, p.vx));
-      p.x += p.vx * dt;
+      // Knockback rides on top of the (clamped) run speed, then decays fast.
+      p.x += (p.vx + p.kx) * dt;
+      p.kx *= Math.exp(-dt / KNOCK_TAU);
+      if (Math.abs(p.kx) < 0.02) p.kx = 0;
 
       // Vertical: jump arc.
       if (p.h > 0 || p.vy > 0) {

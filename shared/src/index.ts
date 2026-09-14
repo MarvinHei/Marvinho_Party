@@ -841,6 +841,8 @@ export interface HideStatePayload {
   aliveHiders: number;
   msLeft: number;
   meCaught: boolean;
+  /** Radar-ping hider positions, shown to the seeker for a short window. */
+  pings: { x: number; y: number }[];
 }
 
 // ---------------------------------------------------------------------------
