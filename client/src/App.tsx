@@ -47,6 +47,8 @@ export function App() {
       {DEBUG_FEATURE_ENABLED && <DebugBar />}
       <MusicControl />
       {active && active.screen === "game" && !active.lobby?.sandbox && <QuitButton seat={active} />}
+      {active && active.screen === "game" && !active.lobby?.sandbox &&
+        active.minigamePhase === "playing" && !active.forfeited && <ForfeitButton seat={active} />}
       {!active ? (
         <div className="center-stage">
           <div className="panel">
@@ -76,6 +78,21 @@ function QuitButton({ seat }: { seat: import("./state/types.js").SeatState }) {
       }}
     >
       ⏻ Quit
+    </button>
+  );
+}
+
+function ForfeitButton({ seat }: { seat: import("./state/types.js").SeatState }) {
+  return (
+    <button
+      className="forfeit-btn"
+      title="Give up this minigame for 0 points"
+      onClick={() => {
+        if (!window.confirm("Forfeit this minigame? You'll get 0 points for it.")) return;
+        store.net(seat.id)?.forfeit().catch(() => { /* ignore */ });
+      }}
+    >
+      🏳️ Forfeit
     </button>
   );
 }

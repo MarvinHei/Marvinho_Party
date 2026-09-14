@@ -138,6 +138,8 @@ export class Lobby {
   private pendingWinnerId: string | null = null;
   /** Deferred round-removal per disconnected player, cancelled if they resume. */
   private graceTimers = new Map<string, NodeJS.Timeout>();
+  /** Players who forfeited the current round (forced to 0 points). */
+  private forfeited = new Set<string>();
   /** Re-sends the active minigame's init/state to a resuming socket. */
   private resendActive: ((socketId: string, playerId: string) => void) | null = null;
   /** How long the (sequential) board advance runs for this round's rewards (ms). */
@@ -315,9 +317,25 @@ export class Lobby {
     this.maybeStartFromReady();
   }
 
+  /** Give up the current minigame: take 0 points and leave the round. */
+  forfeitMinigame(playerId: string): void {
+    if (this.phase !== "minigame") return;
+    if (!this.players.has(playerId) || this.forfeited.has(playerId)) return;
+    this.forfeited.add(playerId);
+    this.removeFromRound(playerId);
+    this.broadcastLobby();
+  }
+
   /** After the grace window, actually remove a still-disconnected player from
    *  the active round (so it can resolve / not hang). */
   private finalizeDisconnect(playerId: string): void {
+    this.removeFromRound(playerId);
+    this.broadcastLobby();
+    this.maybeStartFromReady();
+  }
+
+  /** Remove a player from whatever round is running so it can resolve. */
+  private removeFromRound(playerId: string): void {
     if (this.phase === "minigame") {
       if (this.wordle) {
         this.wordle.finishPlayer(playerId);
@@ -365,8 +383,6 @@ export class Lobby {
         if (this.travle.isComplete()) this.endTravle();
       }
     }
-    this.broadcastLobby();
-    this.maybeStartFromReady();
   }
 
   isHost(playerId: string): boolean {
@@ -617,6 +633,7 @@ export class Lobby {
     this.assignGame = null;
     this.awaitingConfirm = false;
     this.pendingWinnerId = null;
+    this.forfeited.clear();
     this.spectateFrames.clear();
     this.spectateWatch.clear();
     this.phase = "countdown";
@@ -2015,6 +2032,22 @@ export class Lobby {
   // --- shared minigame conclusion ----------------------------------------
 
   private concludeMinigame(result: MinigameResult): void {
+    // Forfeiters take 0 — undo any reward the round handed them.
+    for (const id of this.forfeited) {
+      const given = result.rewards[id] ?? 0;
+      if (given > 0) {
+        const p = this.players.get(id);
+        if (p) p.position = Math.max(0, p.position - given);
+      }
+      result.rewards[id] = 0;
+      const row = result.scoreboard.find((r) => r.playerId === id);
+      if (row) {
+        row.reward = 0;
+        row.win = false;
+        row.detail = "forfeited";
+      }
+    }
+
     if (this.sandbox) {
       // Practice mode: undo any board movement, no winner, back to the menu.
       for (const p of this.players.values()) p.position = 0;

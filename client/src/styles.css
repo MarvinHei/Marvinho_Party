@@ -2587,7 +2587,26 @@ input[type="text"]:focus {
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
 }
 .quit-btn:hover { border-color: var(--bad); color: var(--bad); }
-@media (max-width: 640px) { .quit-btn { top: 8px; left: 8px; font-size: 10px; padding: 5px 9px; } }
+.forfeit-btn {
+  position: fixed;
+  top: 10px;
+  left: 92px;
+  z-index: 60;
+  padding: 6px 12px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.forfeit-btn:hover { border-color: var(--warn); color: var(--warn); }
+@media (max-width: 640px) {
+  .quit-btn { top: 8px; left: 8px; font-size: 10px; padding: 5px 9px; }
+  .forfeit-btn { top: 8px; left: 78px; font-size: 10px; padding: 5px 9px; }
+}
 
 .music-control {
   position: fixed;

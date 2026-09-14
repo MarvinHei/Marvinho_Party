@@ -128,6 +128,8 @@ export interface SeatState {
   resultsPending: boolean;
   /** Set during the on-board winner celebration (before the win screen). */
   celebrateWinnerId: string | null;
+  /** True after forfeiting the current minigame (0 points, sitting out). */
+  forfeited: boolean;
   /** The game whose explanation screen is showing (phase "explaining"). */
   explainGame: MinigameType | null;
   standings: WordleStanding[];
@@ -186,6 +188,7 @@ export function initialSeat(id: string, label: string): SeatState {
     minigamePhase: null,
     resultsPending: false,
     celebrateWinnerId: null,
+    forfeited: false,
     explainGame: null,
     standings: [],
     lastResult: null,

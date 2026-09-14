@@ -35,6 +35,20 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   const isFinished = lobby.phase === "finished";
   const playing = seat.minigamePhase === "playing";
 
+  // Forfeited this round: sit out (panel unmounts, so no input) until it ends.
+  if (playing && seat.forfeited) {
+    return (
+      <div className="game-wrap">
+        <div className="center-stage">
+          <div className="panel" style={{ textAlign: "center" }}>
+            <h2 className="pixel" style={{ color: "var(--bad)" }}>Forfeited 🏳️</h2>
+            <p className="hint">0 points this round — waiting for the others to finish…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // A running minigame takes over the full stage.
   if (playing && seat.minigame === "wordle") {
     return (

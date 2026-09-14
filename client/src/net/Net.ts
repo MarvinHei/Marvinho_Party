@@ -168,6 +168,7 @@ export class Net {
         spectateTarget: null,
         spectateFrame: null,
         celebrateWinnerId: null,
+        forfeited: false,
         wordle: wordle
           ? {
               wordLength: wordle.wordLength,
@@ -460,6 +461,14 @@ export class Net {
   confirmResults(): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:confirmResults", (res) => this.ack(res, resolve, reject));
+    });
+  }
+
+  forfeit(): Promise<null> {
+    return new Promise((resolve, reject) => {
+      this.socket.emit("lobby:forfeit", (res) =>
+        this.ack(res, (d) => { this.patch({ forfeited: true }); resolve(d); }, reject),
+      );
     });
   }
 

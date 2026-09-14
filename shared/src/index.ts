@@ -1000,6 +1000,9 @@ export interface ClientToServerEvents {
   /** Host-only: confirm the results podium, releasing the board advance. */
   "lobby:confirmResults": (ack: (res: Ack<null>) => void) => void;
 
+  /** Give up the current minigame — take 0 points and sit out the rest. */
+  "lobby:forfeit": (ack: (res: Ack<null>) => void) => void;
+
   /** Host-only: remove another player from the lobby. */
   "lobby:kick": (
     payload: { playerId: string },
