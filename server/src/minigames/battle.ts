@@ -1,4 +1,4 @@
-import type { BattleBullet, BattleDot, BattleStatePayload } from "@marvinho/shared";
+import type { BattleBullet, BattleDot, BattlePowerup, BattleStatePayload, PowerKind } from "@marvinho/shared";
 import {
   type Arena,
   generateArena,
@@ -17,6 +17,16 @@ const BULLET_R = 0.14;
 const HIT_R = RADIUS + BULLET_R;
 const SHOOT_COOLDOWN = 340; // ms between shots (moderate)
 
+// --- power-ups ---
+const POWER_KINDS: PowerKind[] = ["autofire", "bounce", "speed"];
+const POWER_SPAWN_MS = 6500; // how often a new power-up appears
+const MAX_POWERUPS = 3; // on the map at once
+const PICKUP_R = RADIUS + 0.5; // how close you must be to collect one
+const POWER_MS = 8000; // how long a collected power lasts
+const AUTOFIRE_COOLDOWN = 130; // ms between shots while autofire is active
+const SPEED_MULT = 1.7; // movement multiplier while boosted
+const BOUNCE_COUNT = 3; // wall bounces for bouncing bullets
+
 interface BP {
   id: string;
   name: string;
@@ -28,6 +38,8 @@ interface BP {
   alive: boolean;
   lastShot: number;
   deathOrder: number | null;
+  power: PowerKind | null;
+  powerUntil: number;
 }
 
 interface Bullet {
@@ -37,6 +49,13 @@ interface Bullet {
   vy: number;
   owner: string;
   life: number; // seconds remaining
+  bounces: number; // wall bounces left
+}
+
+interface Powerup {
+  x: number;
+  y: number;
+  kind: PowerKind;
 }
 
 export interface BattlePlayer {
@@ -55,11 +74,14 @@ export class BattleRound {
   readonly endsAt: number;
   private players = new Map<string, BP>();
   private bullets: Bullet[] = [];
+  private powerups: Powerup[] = [];
+  private lastPowerAt = 0;
   private deaths = 0;
 
   constructor(players: BattlePlayer[], roundMs: number) {
     this.arena = generateArena(COLS, ROWS);
     this.endsAt = Date.now() + roundMs;
+    this.lastPowerAt = Date.now() - POWER_SPAWN_MS + 2500; // first one soon after start
     for (const p of players) {
       const spawn = randomSpawn(this.arena, RADIUS);
       this.players.set(p.id, {
@@ -73,6 +95,8 @@ export class BattleRound {
         alive: true,
         lastShot: 0,
         deathOrder: null,
+        power: null,
+        powerUntil: 0,
       });
     }
   }
@@ -97,7 +121,8 @@ export class BattleRound {
     const p = this.players.get(id);
     if (!p || !p.alive) return;
     const now = Date.now();
-    if (now - p.lastShot < SHOOT_COOLDOWN) return;
+    const cooldown = p.power === "autofire" ? AUTOFIRE_COOLDOWN : SHOOT_COOLDOWN;
+    if (now - p.lastShot < cooldown) return;
     p.lastShot = now;
     // Spawn the bullet just outside the shooter so it can't self-hit.
     const ox = Math.cos(angle);
@@ -108,24 +133,65 @@ export class BattleRound {
       vx: ox * BULLET_SPEED,
       vy: oy * BULLET_SPEED,
       owner: id,
-      life: 2.2,
+      life: 2.6,
+      bounces: p.power === "bounce" ? BOUNCE_COUNT : 0,
+    });
+  }
+
+  private spawnPowerup(): void {
+    const spot = randomSpawn(this.arena, 0.3);
+    this.powerups.push({
+      x: spot.x,
+      y: spot.y,
+      kind: POWER_KINDS[Math.floor(Math.random() * POWER_KINDS.length)],
     });
   }
 
   tick(dt: number): void {
+    const now = Date.now();
+
+    // Spawn power-ups over time, up to a cap.
+    if (now - this.lastPowerAt >= POWER_SPAWN_MS && this.powerups.length < MAX_POWERUPS) {
+      this.lastPowerAt = now;
+      this.spawnPowerup();
+    }
+
     for (const p of this.players.values()) {
       if (!p.alive) continue;
-      const next = moveCircle(this.arena, p.x, p.y, p.dx * SPEED * dt, p.dy * SPEED * dt, RADIUS);
+      if (p.power && now > p.powerUntil) p.power = null; // expire
+      const speed = SPEED * (p.power === "speed" ? SPEED_MULT : 1);
+      const next = moveCircle(this.arena, p.x, p.y, p.dx * speed * dt, p.dy * speed * dt, RADIUS);
       p.x = next.x;
       p.y = next.y;
+
+      // Collect a power-up you're standing on.
+      for (let i = this.powerups.length - 1; i >= 0; i--) {
+        const pu = this.powerups[i];
+        if (Math.hypot(pu.x - p.x, pu.y - p.y) <= PICKUP_R) {
+          p.power = pu.kind;
+          p.powerUntil = now + POWER_MS;
+          this.powerups.splice(i, 1);
+        }
+      }
     }
+
     const survivors: Bullet[] = [];
     for (const b of this.bullets) {
       b.life -= dt;
       if (b.life <= 0) continue;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      if (isWall(this.arena, b.x, b.y)) continue; // absorbed by a wall
+      // Axis-separated stepping so bouncing bullets reflect off walls.
+      let absorbed = false;
+      const nx = b.x + b.vx * dt;
+      if (isWall(this.arena, nx, b.y)) {
+        if (b.bounces > 0) { b.vx = -b.vx; b.bounces--; } else absorbed = true;
+      } else b.x = nx;
+      if (!absorbed) {
+        const ny = b.y + b.vy * dt;
+        if (isWall(this.arena, b.x, ny)) {
+          if (b.bounces > 0) { b.vy = -b.vy; b.bounces--; } else absorbed = true;
+        } else b.y = ny;
+      }
+      if (absorbed) continue;
       let hit = false;
       for (const p of this.players.values()) {
         if (!p.alive || p.id === b.owner) continue;
@@ -147,7 +213,7 @@ export class BattleRound {
     return n;
   }
 
-  state(): { players: BattleDot[]; bullets: BattleBullet[]; alive: number } {
+  state(): { players: BattleDot[]; bullets: BattleBullet[]; powerups: BattlePowerup[]; alive: number } {
     const players: BattleDot[] = [...this.players.values()].map((p) => ({
       id: p.id,
       x: p.x,
@@ -155,9 +221,11 @@ export class BattleRound {
       color: p.color,
       name: p.name,
       alive: p.alive,
+      power: p.power,
     }));
     const bullets: BattleBullet[] = this.bullets.map((b) => ({ x: b.x, y: b.y }));
-    return { players, bullets, alive: this.aliveCount() };
+    const powerups: BattlePowerup[] = this.powerups.map((pu) => ({ x: pu.x, y: pu.y, kind: pu.kind }));
+    return { players, bullets, powerups, alive: this.aliveCount() };
   }
 
   stateFor(id: string): BattleStatePayload {

@@ -8,6 +8,10 @@ import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
 
+const POWER_ICON: Record<string, string> = { autofire: "⚡", bounce: "🔄", speed: "🚀" };
+const POWER_COLOR: Record<string, string> = { autofire: "#ffd23f", bounce: "#3aa0ff", speed: "#42d17a" };
+const POWER_LABEL: Record<string, string> = { autofire: "Autofire", bounce: "Bouncy bullets", speed: "Speed boost" };
+
 export function BattlePanel({ seat }: { seat: SeatState }) {
   const battle = seat.battle;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -39,6 +43,19 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
     const i = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(i);
   }, []);
+
+  // Autofire power-up: while active, keep firing toward the cursor.
+  useEffect(() => {
+    const net = store.net(seat.id);
+    const i = setInterval(() => {
+      const s = snapRef.current;
+      const meNow = s?.players.find((p) => p.id === seat.playerId);
+      if (meNow && meNow.alive && meNow.power === "autofire") {
+        net?.battleShoot(Math.atan2(cursor.current.y - meNow.y, cursor.current.x - meNow.x));
+      }
+    }, 90);
+    return () => clearInterval(i);
+  }, [seat.id, seat.playerId]);
   useEffect(() => {
     audio.startGameMusic("/audio/battle.mp3");
     return () => audio.stopGameMusic();
@@ -125,6 +142,30 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
           }
         }
       }
+      // Power-ups on the ground (pulsing pads with an icon).
+      if (s) {
+        const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+        for (const pu of s.powerups) {
+          const px = pu.x * TILE;
+          const py = pu.y * TILE;
+          const col = POWER_COLOR[pu.kind] ?? "#fff";
+          ctx.globalAlpha = 0.35 + 0.35 * pulse;
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(px, py, TILE * (0.5 + 0.1 * pulse), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#141126";
+          ctx.beginPath();
+          ctx.arc(px, py, TILE * 0.34, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.font = `${TILE * 0.42}px serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(POWER_ICON[pu.kind] ?? "?", px, py + 1);
+        }
+      }
+
       const me = s?.players.find((p) => p.id === seat.playerId) ?? null;
       let meDisp: { x: number; y: number } | null = null;
       // Players (positions smoothed between snapshots).
@@ -135,6 +176,16 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
           if (p.id === seat.playerId) meDisp = sp;
           const px = sp.x * TILE;
           const py = sp.y * TILE;
+          // Glow ring for a player with an active power-up.
+          if (p.alive && p.power) {
+            ctx.strokeStyle = POWER_COLOR[p.power] ?? "#fff";
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(now / 200));
+            ctx.beginPath();
+            ctx.arc(px, py, TILE * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
           const look = looksRef.current.get(p.id);
           drawToken(ctx, px, py, TILE * 0.9, p.color, {
             me: p.id === seat.playerId,
@@ -195,12 +246,18 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
   if (!battle || !init) return null;
   const snap = battle.snap;
   const secsLeft = snap ? Math.ceil(snap.msLeft / 1000) : 0;
+  const myPower = snap?.players.find((p) => p.id === seat.playerId)?.power ?? null;
 
   return (
     <div className="hide-wrap">
       <div className="hide-topbar">
         <span className="hide-role pixel" style={{ color: "#ff8c42" }}>🔫 BATTLE ROYALE</span>
         <span className="hide-info pixel">{snap?.alive ?? "?"} alive</span>
+        {myPower && (
+          <span className="hide-info pixel" style={{ color: POWER_COLOR[myPower] }}>
+            {POWER_ICON[myPower]} {POWER_LABEL[myPower]}
+          </span>
+        )}
         <span className="hide-info pixel">⏱ {secsLeft}s</span>
       </div>
       <div className="hide-field-frame" style={{ aspectRatio: `${cols} / ${rows}` }}>

@@ -859,6 +859,9 @@ export interface BattleInitPayload {
   appearances: TokenLook[];
 }
 
+/** Battle Royale power-up kinds. */
+export type PowerKind = "autofire" | "bounce" | "speed";
+
 export interface BattleDot {
   id: string;
   x: number;
@@ -866,6 +869,8 @@ export interface BattleDot {
   color: string;
   name: string;
   alive: boolean;
+  /** Active power-up, or null. */
+  power: PowerKind | null;
 }
 
 export interface BattleBullet {
@@ -873,9 +878,16 @@ export interface BattleBullet {
   y: number;
 }
 
+export interface BattlePowerup {
+  x: number;
+  y: number;
+  kind: PowerKind;
+}
+
 export interface BattleStatePayload {
   players: BattleDot[];
   bullets: BattleBullet[];
+  powerups: BattlePowerup[];
   alive: number;
   meAlive: boolean;
   msLeft: number;
