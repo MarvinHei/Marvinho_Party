@@ -54,6 +54,7 @@ import { PongRound } from "./minigames/pong.js";
 import { HideRound } from "./minigames/verstecken.js";
 import { BattleRound } from "./minigames/battle.js";
 import { RunnerRound } from "./minigames/runner.js";
+import { SterbegeldRound } from "./minigames/sterbegeld.js";
 
 const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
 
@@ -125,6 +126,7 @@ export class Lobby {
   private hide: HideRound | null = null;
   private battle: BattleRound | null = null;
   private runner: RunnerRound | null = null;
+  private sterbegeld: SterbegeldRound | null = null;
   private pendingAssign: CodenamesAssignment | null = null;
   private pendingTeams: TeamSpec[] | null = null;
   private settings: LobbySettings = defaultLobbySettings();
@@ -393,6 +395,10 @@ export class Lobby {
         this.emitTravleStandings();
         if (this.travle.isComplete()) this.endTravle();
       }
+      if (this.phase === "minigame" && this.sterbegeld) {
+        this.sterbegeld.finishPlayer(playerId);
+        if (this.sterbegeld.isComplete()) this.endSterbegeld();
+      }
     }
   }
 
@@ -571,6 +577,8 @@ export class Lobby {
     if (n >= 3) games.push("battle");
     // Runner Rush: a side-scroll survival race for two or more.
     if (n >= 2) games.push("runner");
+    // Sterbegeld: split-screen two-act score duel (up to 8, enforced by lobby cap).
+    if (n >= 2) games.push("sterbegeld");
     // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
     if (canFormTeams(n)) {
       games.push("skribblteams");
@@ -697,6 +705,7 @@ export class Lobby {
       else if (game === "verstecken") this.startVerstecken();
       else if (game === "battle") this.startBattle();
       else if (game === "runner") this.startRunner();
+      else if (game === "sterbegeld") this.startSterbegeld();
       else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
       else this.startWordle();
     }, COUNTDOWN_MS + 100);
@@ -2084,6 +2093,87 @@ export class Lobby {
     });
 
     this.concludeMinigame({ type: "runner", ranking, rewards, scoreboard });
+  }
+
+  // --- sterbegeld ---------------------------------------------------------
+
+  private startSterbegeld(): void {
+    const players = this.connectedPlayers().map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      color: p.color,
+    }));
+    this.phase = "minigame";
+    this.currentMinigame = "sterbegeld";
+    this.sterbegeld = new SterbegeldRound(players);
+    this.io.to(this.id).emit("minigame:start", { type: "sterbegeld" });
+    const roster = players.map((p) => ({ id: p.id, name: p.nickname, color: p.color }));
+    for (const p of this.connectedPlayers()) {
+      if (!p.socketId) continue;
+      this.io.to(p.socketId).emit("sterbegeld:init", {
+        players: roster,
+        appearances: this.lookRoster(),
+        self: this.sterbegeld.infoOf(p.id),
+      });
+    }
+    this.resendActive = (sid, pid) => {
+      if (!this.sterbegeld) return;
+      this.io.to(sid).emit("minigame:start", { type: "sterbegeld" });
+      this.io.to(sid).emit("sterbegeld:init", {
+        players: roster,
+        appearances: this.lookRoster(),
+        self: this.sterbegeld.infoOf(pid),
+      });
+    };
+    let last = Date.now();
+    this.interval = setInterval(() => {
+      if (!this.sterbegeld) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      this.sterbegeld.tick(dt);
+      // Split-screen: everyone sees the same full state (all POVs).
+      const state = this.sterbegeld.state();
+      this.io.to(this.id).emit("sterbegeld:state", state);
+      if (this.sterbegeld.isComplete()) this.endSterbegeld();
+    }, 33); // 30 Hz
+    // No timer: the round runs until everyone has been eliminated in both acts.
+  }
+
+  handleSterbegeldSign(playerId: string): void {
+    if (this.phase === "minigame") this.sterbegeld?.sign(playerId);
+  }
+
+  handleSterbegeldMove(playerId: string, dir: number): void {
+    if (this.phase === "minigame") this.sterbegeld?.setMove(playerId, dir);
+  }
+
+  private endSterbegeld(): void {
+    if (!this.sterbegeld) return;
+    const round = this.sterbegeld;
+    this.sterbegeld = null;
+    this.clearTimers();
+
+    const ranking = round.ranking();
+    const rewards: Record<string, number> = {};
+    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
+      const s = round.statsFor(id);
+      const reward = rewardForRank(rank);
+      rewards[id] = reward;
+      const player = this.players.get(id);
+      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
+      return {
+        playerId: id,
+        nickname: player?.nickname ?? "?",
+        color: player?.color ?? "#888",
+        rank,
+        reward,
+        win: rank === 0,
+        detail: `${s.total.toLocaleString()} pts · ${s.delaScore.toLocaleString()} + ${s.waitScore.toLocaleString()}`,
+      };
+    });
+
+    this.concludeMinigame({ type: "sterbegeld", ranking, rewards, scoreboard });
   }
 
   // --- shared minigame conclusion ----------------------------------------

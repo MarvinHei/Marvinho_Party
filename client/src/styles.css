@@ -3433,3 +3433,62 @@ input[type="text"]:focus {
   max-height: 66px;
   overflow-y: auto;
 }
+
+/* --- Sterbegeld (split-screen two-act score game) --- */
+.sg-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 8px 12px;
+}
+.sg-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sg-act {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+}
+.sg-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.sg-grid[data-count="2"] {
+  grid-template-columns: repeat(2, 1fr);
+}
+.sg-grid[data-count="3"],
+.sg-grid[data-count="4"] {
+  grid-template-columns: repeat(2, 1fr);
+}
+.sg-cell {
+  position: relative;
+  background: #0d0b22;
+  border: 2px solid #2a2450;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sg-cell.me {
+  border-color: #b06bff;
+  box-shadow: 0 0 0 2px rgba(176, 107, 255, 0.35);
+}
+.sg-name {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 11px;
+  text-shadow: 0 1px 2px #000;
+  z-index: 2;
+  pointer-events: none;
+}
+.sg-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}

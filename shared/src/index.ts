@@ -255,7 +255,8 @@ export type MinigameType =
   | "pong"
   | "verstecken"
   | "battle"
-  | "runner";
+  | "runner"
+  | "sterbegeld";
 
 /** Human-facing names for the wheel and UI. */
 export const MINIGAME_NAMES: Record<MinigameType, string> = {
@@ -275,6 +276,7 @@ export const MINIGAME_NAMES: Record<MinigameType, string> = {
   verstecken: "Hide n' Seek",
   battle: "Battle Royale",
   runner: "Runner Rush",
+  sterbegeld: "Sterbegeld",
 };
 
 // ---------------------------------------------------------------------------
@@ -327,6 +329,7 @@ export const DEFAULT_TIMER_SECONDS: Record<MinigameType, number> = {
   verstecken: 150,
   battle: 150,
   runner: 90,
+  sterbegeld: 120, // unused: this game has no timer (ends when everyone's out)
 };
 
 /** Games that expose a timer-duration slider, with their allowed range. */
@@ -966,6 +969,55 @@ export interface RunnerStatePayload {
 }
 
 // ---------------------------------------------------------------------------
+// Sterbegeld (split-screen: DELA timing duel → Wartezeit dodge survival)
+// ---------------------------------------------------------------------------
+
+export type SterbegeldPhase = "dela" | "wartezeit" | "done";
+
+export interface SterbegeldInitPayload {
+  /** Everyone's identity + look, so every POV can render every character. */
+  players: { id: string; name: string; color: string }[];
+  appearances: TokenLook[];
+  self: { name: string; color: string };
+}
+
+/** One player's live state, shown in that player's split-screen cell. */
+export interface SterbegeldDot {
+  id: string;
+  name: string;
+  color: string;
+  /** DELA: car progress 0 (far) → 1 (impact). */
+  carPos: number;
+  /** DELA: has this player signed the contract yet? */
+  signed: boolean;
+  /** DELA: the car has hit — this phase is finished for them. */
+  delaDone: boolean;
+  delaScore: number;
+  /** Wartezeit: horizontal position 0..1. */
+  x: number;
+  /** Wartezeit: still dodging (false before the phase and after a hit). */
+  waitAlive: boolean;
+  waitScore: number;
+  /** delaScore + waitScore, the value that decides the winner. */
+  total: number;
+}
+
+/** A falling bar segment in the Wartezeit phase (shared across all POVs). */
+export interface SterbegeldBlock {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SterbegeldStatePayload {
+  phase: SterbegeldPhase;
+  players: SterbegeldDot[];
+  /** Wartezeit falling bars (empty during DELA). */
+  blocks: SterbegeldBlock[];
+}
+
+// ---------------------------------------------------------------------------
 // Acknowledgement payloads (socket.io callback responses)
 // ---------------------------------------------------------------------------
 
@@ -1134,6 +1186,11 @@ export interface ClientToServerEvents {
   /** Runner — emit a shockwave that shoves nearby players (on cooldown). */
   "runner:shock": () => void;
 
+  /** Sterbegeld/DELA — sign the contract (space); scored on how late you dare. */
+  "sterbegeld:sign": () => void;
+  /** Sterbegeld/Wartezeit — set held horizontal direction (-1..1). */
+  "sterbegeld:move": (payload: { dir: number }) => void;
+
   /** Spectate — a player pushes an opaque snapshot of its own in-progress view. */
   "spectate:push": (payload: { data: string }) => void;
   /** Spectate — set (or clear, with null) which player's POV I'm watching. */
@@ -1258,6 +1315,11 @@ export interface ServerToClientEvents {
   "runner:init": (payload: RunnerInitPayload) => void;
   /** Runner — a snapshot of players + nearby obstacles (~30/s). */
   "runner:state": (payload: RunnerStatePayload) => void;
+
+  /** Sterbegeld — the roster + looks for the split-screen POVs. */
+  "sterbegeld:init": (payload: SterbegeldInitPayload) => void;
+  /** Sterbegeld — a snapshot of every player's cell (~30/s). */
+  "sterbegeld:state": (payload: SterbegeldStatePayload) => void;
 
   /** Spectate — the latest snapshot of the player this client is watching. */
   "spectate:frame": (payload: { targetId: string; data: string }) => void;

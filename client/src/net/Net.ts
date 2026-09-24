@@ -165,6 +165,7 @@ export class Net {
         hide: null,
         battle: null,
         runner: null,
+        sterbegeld: null,
         spectateTarget: null,
         spectateFrame: null,
         celebrateWinnerId: null,
@@ -361,6 +362,19 @@ export class Net {
 
     this.socket.on("runner:state", (snap) => {
       this.patch((prev) => (prev.runner ? { runner: { ...prev.runner, snap } } : {}));
+    });
+
+    this.socket.on("sterbegeld:init", (init) => {
+      this.patch({
+        screen: "game",
+        minigame: "sterbegeld",
+        minigamePhase: "playing",
+        sterbegeld: { init, snap: null },
+      });
+    });
+
+    this.socket.on("sterbegeld:state", (snap) => {
+      this.patch((prev) => (prev.sterbegeld ? { sterbegeld: { ...prev.sterbegeld, snap } } : {}));
     });
 
     this.socket.on("spectate:frame", ({ targetId, data }) => {
@@ -651,6 +665,16 @@ export class Net {
   /** Runner — emit a shockwave. */
   runnerShock() {
     this.socket.emit("runner:shock");
+  }
+
+  /** Sterbegeld/DELA — sign the contract. */
+  sterbegeldSign() {
+    this.socket.emit("sterbegeld:sign");
+  }
+
+  /** Sterbegeld/Wartezeit — set held horizontal direction. */
+  sterbegeldMove(dir: number) {
+    this.socket.emit("sterbegeld:move", { dir });
   }
 
   /** Spectate — push my own in-progress snapshot for watchers. */

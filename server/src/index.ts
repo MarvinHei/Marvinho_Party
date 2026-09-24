@@ -377,6 +377,16 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleRunnerShock(session.playerId);
   });
 
+  socket.on("sterbegeld:sign", () => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleSterbegeldSign(session.playerId);
+  });
+
+  socket.on("sterbegeld:move", ({ dir }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleSterbegeldMove(session.playerId, dir);
+  });
+
   socket.on("spectate:push", ({ data }) => {
     if (!session) return;
     manager.getLobby(session.lobbyId)?.handleSpectatePush(session.playerId, data);

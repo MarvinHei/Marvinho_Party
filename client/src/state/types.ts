@@ -18,6 +18,8 @@ import type {
   PongStatePayload,
   RunnerInitPayload,
   RunnerStatePayload,
+  SterbegeldInitPayload,
+  SterbegeldStatePayload,
   PuzzleStanding,
   SkribblSegment,
   SkribblTeamsView,
@@ -81,6 +83,11 @@ export interface BattleClientState {
 export interface RunnerClientState {
   init: RunnerInitPayload;
   snap: RunnerStatePayload | null;
+}
+
+export interface SterbegeldClientState {
+  init: SterbegeldInitPayload;
+  snap: SterbegeldStatePayload | null;
 }
 
 export type Screen = "home" | "lobby" | "game";
@@ -163,6 +170,7 @@ export interface SeatState {
   hide: HideClientState | null;
   battle: BattleClientState | null;
   runner: RunnerClientState | null;
+  sterbegeld: SterbegeldClientState | null;
   /** Which player's POV this seat is watching read-only (null = none). */
   spectateTarget: string | null;
   /** Latest streamed snapshot of the watched player. */
@@ -217,6 +225,7 @@ export function initialSeat(id: string, label: string): SeatState {
     hide: null,
     battle: null,
     runner: null,
+    sterbegeld: null,
     spectateTarget: null,
     spectateFrame: null,
   };

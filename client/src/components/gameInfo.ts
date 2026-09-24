@@ -17,6 +17,7 @@ export const GAME_ICON: Record<MinigameType, string> = {
   verstecken: "🫥",
   battle: "🔫",
   runner: "🏃",
+  sterbegeld: "⚰️",
 };
 
 export const GAME_COLOR: Record<MinigameType, string> = {
@@ -36,6 +37,7 @@ export const GAME_COLOR: Record<MinigameType, string> = {
   verstecken: "#b06bff",
   battle: "#ff8c42",
   runner: "#28e0d0",
+  sterbegeld: "#b06bff",
 };
 
 /** One-line tagline + how-to-play bullets for the explanation screen. */
@@ -174,6 +176,14 @@ const RULES: Record<MinigameType, { tagline: string; rules: string[] }> = {
       "→ accelerate, ← brake, ↑ jump over obstacles, ↓ duck under them.",
       "Bonk an obstacle and you stall — drift off the left edge and you're out.",
       "Press Space for a shockwave that shoves nearby rivals (5s cooldown).",
+    ],
+  },
+  sterbegeld: {
+    tagline: "Two acts, split-screen — highest combined score wins.",
+    rules: [
+      "DELA: a car speeds at you — press Space to sign as LATE as you dare (signing early bleeds your score; getting hit first scores 0).",
+      "Wartezeit: then bars fall from the sky — move A/D or ←/→ to stay in the gap.",
+      "The longer you survive the dodge, the more you score. Both acts add up.",
     ],
   },
 };

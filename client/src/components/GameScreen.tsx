@@ -17,6 +17,7 @@ import { PongPanel } from "./PongPanel.js";
 import { HidePanel } from "./HidePanel.js";
 import { BattlePanel } from "./BattlePanel.js";
 import { RunnerPanel } from "./RunnerPanel.js";
+import { SterbegeldPanel } from "./SterbegeldPanel.js";
 import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -133,6 +134,13 @@ export function GameScreen({ seat }: { seat: SeatState }) {
     return (
       <div className="game-wrap">
         <RunnerPanel seat={seat} />
+      </div>
+    );
+  }
+  if (playing && seat.minigame === "sterbegeld" && seat.sterbegeld) {
+    return (
+      <div className="game-wrap">
+        <SterbegeldPanel seat={seat} />
       </div>
     );
   }
