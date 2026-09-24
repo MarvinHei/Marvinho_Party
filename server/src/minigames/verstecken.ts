@@ -240,8 +240,9 @@ export class HideRound {
   }
 
   isComplete(): boolean {
-    // No timer: the round ends only once the seeker has caught every hider.
-    return this.aliveHiders() === 0;
+    // Ends when the seeker catches everyone, or when time runs out (any hider
+    // still alive at the buzzer means the hiders win).
+    return this.aliveHiders() === 0 || Date.now() >= this.endsAt;
   }
 
   statsFor(id: string): HideStats {

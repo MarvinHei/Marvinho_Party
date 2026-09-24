@@ -1826,7 +1826,11 @@ export class Lobby {
       }
       if (this.hide.isComplete()) this.endVerstecken();
     }, 50); // 20 Hz
-    // No timer: the round runs until the seeker has caught every hider.
+    // Hide n' Seek keeps its timer: if any hider survives to the buzzer, the
+    // hiders win — so the round must be able to end on time.
+    this.schedule(() => {
+      if (this.hide) this.endVerstecken();
+    }, roundMs);
   }
 
   handleHideMove(playerId: string, dx: number, dy: number): void {

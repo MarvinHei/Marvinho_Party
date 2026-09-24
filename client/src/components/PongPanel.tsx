@@ -102,6 +102,11 @@ export function PongPanel({ seat }: { seat: SeatState }) {
       drawPaddle(ctx, PAD_X_L * W, padL * H, colL, halfL, s?.powerL === "fast");
       drawPaddle(ctx, PAD_X_R * W, padR * H, colR, halfR, s?.powerR === "fast");
 
+      // Floating power-up pickups — shoot the ball through one to grab it.
+      if (s) {
+        for (const pu of s.powerups) drawPickup(ctx, pu.x * W, pu.y * H, pu.kind);
+      }
+
       // Detect bounces by watching the ball's velocity flip sign near an edge,
       // and spew particles + play a beep on each hit.
       if (s) {
@@ -234,7 +239,7 @@ export function PongPanel({ seat }: { seat: SeatState }) {
         )}
       </div>
       <div className="pong-hint pixel">
-        {powerText ?? `First to ${pong.init.target} — score a point to earn a power-up`}
+        {powerText ?? `First to ${pong.init.target} — shoot the ball through a ⚡ / 🤏 to grab it`}
       </div>
     </div>
   );
@@ -249,6 +254,30 @@ interface Particle {
   max: number;
   color: string;
   size: number;
+}
+
+function drawPickup(ctx: CanvasRenderingContext2D, x: number, y: number, kind: "fast" | "shrink") {
+  const t = (performance.now() % 1200) / 1200;
+  const r = 14 + Math.sin(t * Math.PI * 2) * 2;
+  const color = kind === "fast" ? "#ffd23f" : "#28e0d0";
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "16px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(kind === "fast" ? "⚡" : "🤏", x, y + 1);
+  ctx.restore();
 }
 
 function drawPaddle(

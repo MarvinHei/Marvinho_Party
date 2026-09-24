@@ -292,6 +292,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   const releaseIn = Math.max(0, Math.ceil((init.releaseAt - now) / 1000));
   const tpCd = snap ? Math.ceil(snap.teleportCd / 1000) : 30;
   const tpReady = tpCd <= 0;
+  const secsLeft = snap ? Math.ceil(snap.msLeft / 1000) : 0;
   const held = releaseIn > 0 && isSeeker;
 
   return (
@@ -304,6 +305,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         <span className="hide-info pixel" style={{ color: tpReady ? "#28e0d0" : undefined }}>
           🌀 {tpReady ? "Blink ready" : `${tpCd}s`}
         </span>
+        <span className="hide-info pixel">⏱ {secsLeft}s</span>
       </div>
       <div className="hide-field-frame" style={{ aspectRatio: `${cols} / ${rows}` }}>
         <canvas

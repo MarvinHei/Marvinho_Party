@@ -795,9 +795,17 @@ export interface PongInitPayload {
   vsCpu: boolean;
 }
 
-/** Pong power-up awarded to the player who scores a point. "fast" makes the
- *  ball rocket off the holder's own paddle; "shrink" shrinks the opponent's. */
+/** Pong power-up. "fast" makes the ball rocket off the holder's own paddle;
+ *  "shrink" shrinks the opponent's. Grabbed by shooting the ball through a
+ *  floating pickup on the court. */
 export type PongPowerKind = "fast" | "shrink";
+
+/** A floating power-up pickup on the Pong court (coords normalized 0..1). */
+export interface PongPowerup {
+  x: number;
+  y: number;
+  kind: PongPowerKind;
+}
 
 /** Frequently-broadcast snapshot of one player's match (coords normalized 0..1). */
 export interface PongStatePayload {
@@ -811,6 +819,8 @@ export interface PongStatePayload {
   /** Active power-up per side (held by the player on that side), or null. */
   powerL: PongPowerKind | null;
   powerR: PongPowerKind | null;
+  /** Floating pickups on the court — shoot the ball through one to grab it. */
+  powerups: PongPowerup[];
   scoreL: number;
   scoreR: number;
   over: boolean;

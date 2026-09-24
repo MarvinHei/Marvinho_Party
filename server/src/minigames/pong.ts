@@ -1,4 +1,4 @@
-import type { PongPowerKind, PongStatePayload } from "@marvinho/shared";
+import type { PongPowerKind, PongPowerup, PongStatePayload } from "@marvinho/shared";
 
 // Field is normalized 0..1 on both axes; the client renders it into a wide box.
 const PAD_X_L = 0.04;
@@ -11,10 +11,13 @@ const SPEEDUP = 1.06; // per paddle hit
 const CPU_SPEED = 0.78; // slightly slower than the ball, so it's beatable
 const SERVE_DELAY = 0.8; // seconds the ball waits at center after a point
 
-// --- power-ups (awarded to whoever scores a point) ---
-const POWER_MS = 9000; // how long a scored power-up lasts
+// --- power-ups (floating pickups; the last hitter grabs one the ball crosses) ---
+const POWER_MS = 9000; // how long a collected power-up lasts
 const FAST_SPEED = 1.35; // instant ball speed on a "fast" bounce (>= MAX_SPEED)
 const SHRINK_HALF = 0.05; // opponent paddle half-height while "shrink" is active
+const POWER_SPAWN_MS = 5200; // how often a new pickup appears on the court
+const MAX_POWERUPS = 2; // pickups on a court at once
+const PICKUP_R = 0.045; // how near the ball must pass to grab it
 
 interface Slot {
   playerId: string | null; // null = CPU
@@ -43,6 +46,10 @@ interface Match {
   powerR: PongPowerKind | null;
   powerUntilL: number;
   powerUntilR: number;
+  /** Floating pickups + the last side to hit the ball + next spawn time. */
+  powerups: PongPowerup[];
+  lastHitter: "left" | "right" | null;
+  nextPowerAt: number;
 }
 
 export interface PongPlayer {
@@ -94,6 +101,9 @@ export class PongRound {
         powerR: null,
         powerUntilL: 0,
         powerUntilR: 0,
+        powerups: [],
+        lastHitter: null,
+        nextPowerAt: Date.now() + 3000, // first pickup a few seconds in
       };
       this.serve(m, Math.random() < 0.5 ? "left" : "right");
       this.matches.push(m);
@@ -112,6 +122,7 @@ export class PongRound {
     m.vx = dir * BASE_SPEED * Math.cos(angle);
     m.vy = BASE_SPEED * Math.sin(angle);
     m.serveTimer = SERVE_DELAY;
+    m.lastHitter = null; // fresh ball — nobody has hit it yet
   }
 
   /** Expire any lapsed power-ups on a match. */
@@ -141,6 +152,11 @@ export class PongRound {
     for (const m of this.matches) {
       if (m.over) continue;
       this.agePowers(m, now);
+      // Spawn floating pickups on the court over time (up to a cap).
+      if (now >= m.nextPowerAt && m.powerups.length < MAX_POWERUPS) {
+        m.powerups.push(this.spawnPickup());
+        m.nextPowerAt = now + POWER_SPAWN_MS;
+      }
       // CPU paddles track the ball with a capped speed.
       if (m.left.playerId === null) this.moveCpu(m, "left", dt);
       if (m.right.playerId === null) this.moveCpu(m, "right", dt);
@@ -152,6 +168,15 @@ export class PongRound {
 
       m.ballX += m.vx * dt;
       m.ballY += m.vy * dt;
+
+      // Shoot the ball through a pickup → the last player to hit it grabs it.
+      for (let i = m.powerups.length - 1; i >= 0; i--) {
+        const pu = m.powerups[i];
+        if (Math.hypot(m.ballX - pu.x, m.ballY - pu.y) <= PICKUP_R + BALL_R) {
+          if (m.lastHitter) this.grantPower(m, m.lastHitter, pu.kind, now);
+          m.powerups.splice(i, 1);
+        }
+      }
 
       // Top / bottom walls.
       if (m.ballY < BALL_R) {
@@ -196,6 +221,7 @@ export class PongRound {
   }
 
   private bounce(m: Match, side: "left" | "right") {
+    m.lastHitter = side; // this side "shot" the ball — they grab pickups it crosses
     const pad = side === "left" ? m.padL : m.padR;
     const offset = Math.max(-1, Math.min(1, (m.ballY - pad) / this.halfFor(m, side)));
     m.speed = Math.min(m.speed * SPEEDUP, MAX_SPEED);
@@ -210,19 +236,25 @@ export class PongRound {
     m.ballX = side === "left" ? PAD_X_L + BALL_R + 0.001 : PAD_X_R - BALL_R - 0.001;
   }
 
-  /** Grant the scorer one of the two power-ups. */
-  private awardPower(m: Match, scorer: "left" | "right") {
-    const kind: PongPowerKind = Math.random() < 0.5 ? "fast" : "shrink";
-    const until = Date.now() + POWER_MS;
-    if (scorer === "left") { m.powerL = kind; m.powerUntilL = until; }
+  /** A fresh pickup somewhere in the central court. */
+  private spawnPickup(): PongPowerup {
+    return {
+      x: 0.28 + Math.random() * 0.44,
+      y: 0.16 + Math.random() * 0.68,
+      kind: Math.random() < 0.5 ? "fast" : "shrink",
+    };
+  }
+
+  /** Give a side a collected power-up. */
+  private grantPower(m: Match, side: "left" | "right", kind: PongPowerKind, now: number) {
+    const until = now + POWER_MS;
+    if (side === "left") { m.powerL = kind; m.powerUntilL = until; }
     else { m.powerR = kind; m.powerUntilR = until; }
   }
 
   private score(m: Match, scorer: "left" | "right") {
     if (scorer === "left") m.scoreL++;
     else m.scoreR++;
-    // The player who put the ball through earns a power-up for the next rallies.
-    this.awardPower(m, scorer);
     if (m.scoreL >= this.target || m.scoreR >= this.target) {
       m.over = true;
       m.winner = m.scoreL > m.scoreR ? "left" : "right";
@@ -249,6 +281,7 @@ export class PongRound {
       padHalfR: this.halfFor(m, "right"),
       powerL: m.powerL,
       powerR: m.powerR,
+      powerups: m.powerups,
       scoreL: m.scoreL,
       scoreR: m.scoreR,
       over: m.over,
