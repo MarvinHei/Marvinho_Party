@@ -245,7 +245,6 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
 
   if (!battle || !init) return null;
   const snap = battle.snap;
-  const secsLeft = snap ? Math.ceil(snap.msLeft / 1000) : 0;
   const myPower = snap?.players.find((p) => p.id === seat.playerId)?.power ?? null;
 
   return (
@@ -258,7 +257,6 @@ export function BattlePanel({ seat }: { seat: SeatState }) {
             {POWER_ICON[myPower]} {POWER_LABEL[myPower]}
           </span>
         )}
-        <span className="hide-info pixel">⏱ {secsLeft}s</span>
       </div>
       <div className="hide-field-frame" style={{ aspectRatio: `${cols} / ${rows}` }}>
         <canvas

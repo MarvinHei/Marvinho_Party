@@ -242,7 +242,8 @@ export class BattleRound {
   }
 
   isComplete(): boolean {
-    return this.aliveCount() <= 1 || Date.now() >= this.endsAt;
+    // No timer: last player standing wins.
+    return this.aliveCount() <= 1;
   }
 
   statsFor(id: string): BattleStats {

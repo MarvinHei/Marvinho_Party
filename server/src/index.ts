@@ -342,6 +342,16 @@ io.on("connection", (socket) => {
     manager.getLobby(session.lobbyId)?.handleHideStab(session.playerId);
   });
 
+  socket.on("hide:teleport", ({ x, y }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleHideTeleport(session.playerId, x, y);
+  });
+
+  socket.on("hide:aim", ({ angle }) => {
+    if (!session) return;
+    manager.getLobby(session.lobbyId)?.handleHideAim(session.playerId, angle);
+  });
+
   socket.on("battle:move", ({ dx, dy }) => {
     if (!session) return;
     manager.getLobby(session.lobbyId)?.handleBattleMove(session.playerId, dx, dy);

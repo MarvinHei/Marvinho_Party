@@ -6,6 +6,7 @@ import {
   moveCircle,
   randomSpawn,
   hasLineOfSight,
+  isWall,
 } from "./arena.js";
 
 const COLS = 34;
@@ -14,9 +15,12 @@ const HIDER_SPEED = 5.6; // tiles / second
 const SEEKER_SPEED = 8.8; // much faster, so hiders must really use cover
 const RADIUS = 0.36;
 const CATCH_RANGE = 1.2; // tiles — how close a stab reaches
-const VISION = 7; // seeker sight radius (tiles)
+const VISION = 9; // seeker flashlight range (tiles)
+const NEAR_VISION = 2.6; // full-circle awareness right around the seeker
+const FLASH_HALF_ANGLE = Math.PI * 0.26; // ~47° half-angle flashlight cone
 const PING_INTERVAL = 5000; // ms — seeker gets a radar ping of hiders this often
 const PING_SHOW_MS = 2200; // how long each ping stays on the seeker's screen
+const TELEPORT_CD = 30000; // ms — every player may blink to a spot this often
 
 interface HP {
   id: string;
@@ -29,6 +33,10 @@ interface HP {
   dy: number;
   caught: boolean;
   survivedMs: number | null;
+  /** Last teleport timestamp (for the shared cooldown). */
+  lastTeleport: number;
+  /** Seeker flashlight aim (radians); ignored for hiders. */
+  aim: number;
 }
 
 export interface HidePlayer {
@@ -74,6 +82,8 @@ export class HideRound {
         dy: 0,
         caught: false,
         survivedMs: null,
+        lastTeleport: now, // first teleport becomes available 30s in
+        aim: 0,
       });
     }
   }
@@ -121,6 +131,35 @@ export class HideRound {
     }
   }
 
+  /** Point the seeker's flashlight (radians). */
+  setAim(id: string, angle: number): void {
+    const p = this.players.get(id);
+    if (p && p.role === "seeker" && Number.isFinite(angle)) p.aim = angle;
+  }
+
+  /** Blink to a map spot (on a shared cooldown; clamped to open floor). */
+  teleport(id: string, x: number, y: number): void {
+    const p = this.players.get(id);
+    if (!p || p.caught) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const now = Date.now();
+    if (now - p.lastTeleport < TELEPORT_CD) return;
+    // The seeker can't blink before it's loosed onto the map.
+    if (p.role === "seeker" && !this.released()) return;
+    const tx = Math.max(RADIUS, Math.min(this.arena.cols - RADIUS, x));
+    const ty = Math.max(RADIUS, Math.min(this.arena.rows - RADIUS, y));
+    if (isWall(this.arena, tx, ty)) return; // don't land inside a wall
+    p.x = tx;
+    p.y = ty;
+    p.lastTeleport = now;
+  }
+
+  private teleportCd(id: string): number {
+    const p = this.players.get(id);
+    if (!p) return 0;
+    return Math.max(0, TELEPORT_CD - (Date.now() - p.lastTeleport));
+  }
+
   tick(dt: number): void {
     const released = this.released();
     for (const p of this.players.values()) {
@@ -154,10 +193,18 @@ export class HideRound {
     const isSeeker = me?.role === "seeker";
     const dots: HideDot[] = [];
     for (const p of this.players.values()) {
-      // Seeker fog-of-war: only see hiders in range + line of sight.
+      // Seeker flashlight: a narrow cone in the aim direction (plus a small
+      // full-circle right around the seeker), all gated on line of sight.
       if (isSeeker && p.role === "hider" && !p.caught && me) {
         const d = Math.hypot(p.x - me.x, p.y - me.y);
-        const visible = d <= VISION && hasLineOfSight(this.arena, me.x, me.y, p.x, p.y);
+        let visible = d <= NEAR_VISION;
+        if (!visible && d <= VISION) {
+          const ang = Math.atan2(p.y - me.y, p.x - me.x);
+          let diff = Math.abs(ang - me.aim) % (Math.PI * 2);
+          if (diff > Math.PI) diff = Math.PI * 2 - diff;
+          visible = diff <= FLASH_HALF_ANGLE;
+        }
+        if (visible) visible = hasLineOfSight(this.arena, me.x, me.y, p.x, p.y);
         if (!visible) continue;
       }
       // Hiders don't see the seeker until it's released onto the map.
@@ -182,6 +229,9 @@ export class HideRound {
       msLeft: Math.max(0, this.endsAt - Date.now()),
       meCaught: me?.caught ?? false,
       pings,
+      teleportCd: this.teleportCd(id),
+      flashHalfAngle: FLASH_HALF_ANGLE,
+      flashRange: VISION,
     };
   }
 
@@ -190,7 +240,8 @@ export class HideRound {
   }
 
   isComplete(): boolean {
-    return this.aliveHiders() === 0 || Date.now() >= this.endsAt;
+    // No timer: the round ends only once the seeker has caught every hider.
+    return this.aliveHiders() === 0;
   }
 
   statsFor(id: string): HideStats {

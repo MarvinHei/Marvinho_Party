@@ -1,4 +1,4 @@
-import type { PongStatePayload } from "@marvinho/shared";
+import type { PongPowerKind, PongStatePayload } from "@marvinho/shared";
 
 // Field is normalized 0..1 on both axes; the client renders it into a wide box.
 const PAD_X_L = 0.04;
@@ -10,6 +10,11 @@ const MAX_SPEED = 1.5;
 const SPEEDUP = 1.06; // per paddle hit
 const CPU_SPEED = 0.78; // slightly slower than the ball, so it's beatable
 const SERVE_DELAY = 0.8; // seconds the ball waits at center after a point
+
+// --- power-ups (awarded to whoever scores a point) ---
+const POWER_MS = 9000; // how long a scored power-up lasts
+const FAST_SPEED = 1.35; // instant ball speed on a "fast" bounce (>= MAX_SPEED)
+const SHRINK_HALF = 0.05; // opponent paddle half-height while "shrink" is active
 
 interface Slot {
   playerId: string | null; // null = CPU
@@ -33,6 +38,11 @@ interface Match {
   serveTimer: number; // >0 → ball frozen at center
   over: boolean;
   winner: "left" | "right" | null;
+  /** Active power-up per side + its expiry (ms epoch). */
+  powerL: PongPowerKind | null;
+  powerR: PongPowerKind | null;
+  powerUntilL: number;
+  powerUntilR: number;
 }
 
 export interface PongPlayer {
@@ -80,6 +90,10 @@ export class PongRound {
         serveTimer: SERVE_DELAY,
         over: false,
         winner: null,
+        powerL: null,
+        powerR: null,
+        powerUntilL: 0,
+        powerUntilR: 0,
       };
       this.serve(m, Math.random() < 0.5 ? "left" : "right");
       this.matches.push(m);
@@ -100,18 +114,33 @@ export class PongRound {
     m.serveTimer = SERVE_DELAY;
   }
 
+  /** Expire any lapsed power-ups on a match. */
+  private agePowers(m: Match, now: number) {
+    if (m.powerL && now >= m.powerUntilL) m.powerL = null;
+    if (m.powerR && now >= m.powerUntilR) m.powerR = null;
+  }
+
+  /** Effective paddle half-height: shrinks while the OPPONENT holds "shrink". */
+  private halfFor(m: Match, side: "left" | "right"): number {
+    const foePower = side === "left" ? m.powerR : m.powerL;
+    return foePower === "shrink" ? SHRINK_HALF : PAD_HALF;
+  }
+
   setPaddle(playerId: string, y: number) {
     const e = this.index.get(playerId);
     if (!e || e.match.over) return;
-    const clamped = Math.max(PAD_HALF, Math.min(1 - PAD_HALF, y));
+    const half = this.halfFor(e.match, e.side);
+    const clamped = Math.max(half, Math.min(1 - half, y));
     if (e.side === "left") e.match.padL = clamped;
     else e.match.padR = clamped;
   }
 
   /** Advance every match by `dt` seconds. */
   tick(dt: number) {
+    const now = Date.now();
     for (const m of this.matches) {
       if (m.over) continue;
+      this.agePowers(m, now);
       // CPU paddles track the ball with a capped speed.
       if (m.left.playerId === null) this.moveCpu(m, "left", dt);
       if (m.right.playerId === null) this.moveCpu(m, "right", dt);
@@ -135,7 +164,7 @@ export class PongRound {
 
       // Left paddle.
       if (m.vx < 0 && m.ballX - BALL_R <= PAD_X_L) {
-        if (Math.abs(m.ballY - m.padL) <= PAD_HALF + BALL_R) {
+        if (Math.abs(m.ballY - m.padL) <= this.halfFor(m, "left") + BALL_R) {
           this.bounce(m, "left");
         } else if (m.ballX < 0) {
           this.score(m, "right");
@@ -143,7 +172,7 @@ export class PongRound {
       }
       // Right paddle.
       if (m.vx > 0 && m.ballX + BALL_R >= PAD_X_R) {
-        if (Math.abs(m.ballY - m.padR) <= PAD_HALF + BALL_R) {
+        if (Math.abs(m.ballY - m.padR) <= this.halfFor(m, "right") + BALL_R) {
           this.bounce(m, "right");
         } else if (m.ballX > 1) {
           this.score(m, "left");
@@ -168,8 +197,11 @@ export class PongRound {
 
   private bounce(m: Match, side: "left" | "right") {
     const pad = side === "left" ? m.padL : m.padR;
-    const offset = Math.max(-1, Math.min(1, (m.ballY - pad) / PAD_HALF));
+    const offset = Math.max(-1, Math.min(1, (m.ballY - pad) / this.halfFor(m, side)));
     m.speed = Math.min(m.speed * SPEEDUP, MAX_SPEED);
+    // "fast" power: this side's paddle rockets the ball back.
+    const power = side === "left" ? m.powerL : m.powerR;
+    if (power === "fast") m.speed = Math.max(m.speed, FAST_SPEED);
     const angle = offset * (Math.PI * 0.38); // up to ~68°
     const dir = side === "left" ? 1 : -1;
     m.vx = dir * m.speed * Math.cos(angle);
@@ -178,9 +210,19 @@ export class PongRound {
     m.ballX = side === "left" ? PAD_X_L + BALL_R + 0.001 : PAD_X_R - BALL_R - 0.001;
   }
 
+  /** Grant the scorer one of the two power-ups. */
+  private awardPower(m: Match, scorer: "left" | "right") {
+    const kind: PongPowerKind = Math.random() < 0.5 ? "fast" : "shrink";
+    const until = Date.now() + POWER_MS;
+    if (scorer === "left") { m.powerL = kind; m.powerUntilL = until; }
+    else { m.powerR = kind; m.powerUntilR = until; }
+  }
+
   private score(m: Match, scorer: "left" | "right") {
     if (scorer === "left") m.scoreL++;
     else m.scoreR++;
+    // The player who put the ball through earns a power-up for the next rallies.
+    this.awardPower(m, scorer);
     if (m.scoreL >= this.target || m.scoreR >= this.target) {
       m.over = true;
       m.winner = m.scoreL > m.scoreR ? "left" : "right";
@@ -203,6 +245,10 @@ export class PongRound {
       ballY: m.ballY,
       padL: m.padL,
       padR: m.padR,
+      padHalfL: this.halfFor(m, "left"),
+      padHalfR: this.halfFor(m, "right"),
+      powerL: m.powerL,
+      powerR: m.powerR,
       scoreL: m.scoreL,
       scoreR: m.scoreR,
       over: m.over,

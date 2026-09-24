@@ -19,8 +19,8 @@ const DUCK_H = 0.8;
 
 // --- movement ---
 const SCROLL0 = 5.0; // starting camera speed (tiles/s)
-const SCROLL_RAMP = 0.11; // per second — the track keeps getting faster
-const SCROLL_MAX = 15;
+const SCROLL_RAMP = 0.24; // per second — the track ramps up quickly now
+const SCROLL_MAX = 20;
 const ACCEL = 15; // tiles/s^2 from holding accelerate/brake
 const EASE = 3.2; // how fast an idle player's speed relaxes toward the scroll
 const MAX_LEAD = VIEW_W - 4; // furthest right a player can pull ahead
@@ -307,7 +307,8 @@ export class RunnerRound {
   }
 
   isComplete(): boolean {
-    return this.aliveCount() <= 1 || Date.now() >= this.endsAt;
+    // No timer: the race runs until only one runner is left standing.
+    return this.aliveCount() <= 1;
   }
 
   statsFor(id: string): RunnerStats {

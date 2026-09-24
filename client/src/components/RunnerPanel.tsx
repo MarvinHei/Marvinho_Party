@@ -405,7 +405,6 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
 
   if (!runner || !init) return null;
   const snap = runner.snap;
-  const secsLeft = snap ? Math.ceil(snap.msLeft / 1000) : 0;
   const me = snap?.players.find((p) => p.id === seat.playerId);
   const shockPct = Math.round((me?.shock ?? 0) * 100);
   const shockReady = (me?.shock ?? 0) >= 1;
@@ -416,7 +415,6 @@ export function RunnerPanel({ seat }: { seat: SeatState }) {
         <span className="hide-role pixel" style={{ color: "#28e0d0" }}>🏃 RUNNER RUSH</span>
         <span className="hide-info pixel">{snap?.alive ?? "?"} left</span>
         <span className="hide-info pixel">📏 {Math.round(snap?.dist ?? 0)}m</span>
-        <span className="hide-info pixel">⏱ {secsLeft}s</span>
       </div>
       <div className="hide-field-frame" style={{ aspectRatio: `${viewW} / ${viewH}` }}>
         <canvas ref={canvasRef} width={viewW * TILE} height={viewH * TILE} className="battle-canvas" />

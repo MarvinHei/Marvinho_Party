@@ -97,8 +97,10 @@ export function PongPanel({ seat }: { seat: SeatState }) {
       const padR = side === "right" ? localPad.current : dispPad.current.r;
       const colL = side === "left" ? selfColor : oppColor;
       const colR = side === "right" ? selfColor : oppColor;
-      drawPaddle(ctx, PAD_X_L * W, padL * H, colL);
-      drawPaddle(ctx, PAD_X_R * W, padR * H, colR);
+      const halfL = s?.padHalfL ?? PAD_HALF;
+      const halfR = s?.padHalfR ?? PAD_HALF;
+      drawPaddle(ctx, PAD_X_L * W, padL * H, colL, halfL, s?.powerL === "fast");
+      drawPaddle(ctx, PAD_X_R * W, padR * H, colR, halfR, s?.powerR === "fast");
 
       // Detect bounces by watching the ball's velocity flip sign near an edge,
       // and spew particles + play a beep on each hit.
@@ -170,7 +172,9 @@ export function PongPanel({ seat }: { seat: SeatState }) {
 
   function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const y = Math.max(PAD_HALF, Math.min(1 - PAD_HALF, (e.clientY - rect.top) / rect.height));
+    const s = snapRef.current;
+    const half = (side === "left" ? s?.padHalfL : s?.padHalfR) ?? PAD_HALF;
+    const y = Math.max(half, Math.min(1 - half, (e.clientY - rect.top) / rect.height));
     localPad.current = y;
     const now = performance.now();
     if (now - lastSent.current > 16) {
@@ -181,18 +185,35 @@ export function PongPanel({ seat }: { seat: SeatState }) {
 
   if (!pong) return null;
   const s = pong.snap;
+  // Position the names to match the physical paddle sides, so "you" is always
+  // on the side your paddle is actually on (left score = left paddle).
+  const leftIsMe = side === "left";
+  const leftInfo = leftIsMe ? pong.init.self : pong.init.opponent;
+  const rightInfo = leftIsMe ? pong.init.opponent : pong.init.self;
+  const myPower = s ? (side === "left" ? s.powerL : s.powerR) : null;
+  const foePower = s ? (side === "left" ? s.powerR : s.powerL) : null;
+  const powerText =
+    myPower === "fast"
+      ? "⚡ Power ball — your paddle rockets it back!"
+      : myPower === "shrink"
+        ? "🤏 Shrink shot — their paddle is tiny!"
+        : foePower === "fast"
+          ? "⚠ Watch out — their paddle is charged!"
+          : foePower === "shrink"
+            ? "⚠ Your paddle shrank — hang on!"
+            : null;
 
   return (
     <div className="pong-wrap">
       <div className="pong-topbar">
-        <span className="pong-name" style={{ color: pong.init.self.color }}>
-          {pong.init.self.name} {side === "left" ? "◀" : "▶"}
+        <span className="pong-name" style={{ color: leftInfo.color }}>
+          {leftIsMe ? "YOU" : leftInfo.name}{!leftIsMe && pong.init.vsCpu ? " 🤖" : ""} ◀
         </span>
         <span className="pong-score pixel">
           {s ? s.scoreL : 0} : {s ? s.scoreR : 0}
         </span>
-        <span className="pong-name" style={{ color: pong.init.opponent.color }}>
-          {pong.init.opponent.name}{pong.init.vsCpu ? " 🤖" : ""} {side === "right" ? "◀" : "▶"}
+        <span className="pong-name" style={{ color: rightInfo.color }}>
+          ▶ {leftIsMe ? rightInfo.name : "YOU"}{leftIsMe && pong.init.vsCpu ? " 🤖" : ""}
         </span>
       </div>
       <div className="pong-field-frame">
@@ -212,7 +233,9 @@ export function PongPanel({ seat }: { seat: SeatState }) {
           </div>
         )}
       </div>
-      <div className="pong-hint pixel">First to {pong.init.target} — move the mouse to steer your paddle</div>
+      <div className="pong-hint pixel">
+        {powerText ?? `First to ${pong.init.target} — score a point to earn a power-up`}
+      </div>
     </div>
   );
 }
@@ -228,12 +251,28 @@ interface Particle {
   size: number;
 }
 
-function drawPaddle(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {
-  const h = PAD_HALF * 2 * H;
-  ctx.fillStyle = color;
+function drawPaddle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  color: string,
+  half: number = PAD_HALF,
+  fast = false,
+) {
+  const h = half * 2 * H;
   const x = cx - PAD_W / 2;
   const y = cy - h / 2;
   const r = 5;
+  // "fast" power: a bright aura so it's clear this paddle rockets the ball.
+  if (fast) {
+    ctx.save();
+    ctx.shadowColor = "#ffd23f";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = "#ffd23f";
+    ctx.fillRect(x - 2, y - 2, PAD_W + 4, h + 4);
+    ctx.restore();
+  }
+  ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + PAD_W, y, x + PAD_W, y + h, r);

@@ -86,6 +86,10 @@ const ADVANCE_MS = 4200;
 const CELEBRATE_MS = 2800;
 /** How long the winner celebration shows before returning to the lobby (ms). */
 const MATCH_END_MS = 9000;
+/** Each time a player solves a timed round, cut the remaining time to this… */
+const SOLVE_SHRINK = 0.55;
+/** …but never below this floor (ms), so latecomers still get a fair shot. */
+const SOLVE_MIN_MS = 8000;
 
 function shuffled<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -146,6 +150,13 @@ export class Lobby {
   private lastAdvanceMs = ADVANCE_MS;
   private timers: NodeJS.Timeout[] = [];
   private interval: NodeJS.Timeout | null = null;
+  /** A reschedulable deadline for timed rounds that shrink when players solve. */
+  private roundEndTimer: NodeJS.Timeout | null = null;
+  private roundEndsAt = 0;
+  private roundExpire: (() => void) | null = null;
+  private roundShrinkable = false;
+  /** The Skribbl turn's finish timer (kept apart so a solve can pull it in). */
+  private skribblTurnTimer: NodeJS.Timeout | null = null;
 
   onEmpty?: () => void;
 
@@ -456,6 +467,41 @@ export class Lobby {
     return s.timerEnabled ? s.timerSeconds : NO_TIMER_SECONDS;
   }
 
+  /**
+   * Arm a reschedulable deadline for a timed round. Returns the deadline (ms
+   * epoch). `shrinkable` allows {@link shrinkRoundTimer} to pull it in as
+   * players solve; it's disabled when the host turned the round timer off.
+   */
+  private armRoundTimer(game: MinigameType, seconds: number, onExpire: () => void): number {
+    if (this.roundEndTimer) clearTimeout(this.roundEndTimer);
+    this.roundEndsAt = Date.now() + seconds * 1000;
+    this.roundExpire = onExpire;
+    this.roundShrinkable = this.settings.games[game].timerEnabled;
+    this.roundEndTimer = setTimeout(() => {
+      this.roundEndTimer = null;
+      onExpire();
+    }, seconds * 1000);
+    return this.roundEndsAt;
+  }
+
+  /** A player solved: shorten the remaining time and tell clients the new end. */
+  private shrinkRoundTimer(): void {
+    if (!this.roundShrinkable || !this.roundEndTimer || !this.roundExpire) return;
+    const now = Date.now();
+    const remaining = this.roundEndsAt - now;
+    if (remaining <= SOLVE_MIN_MS) return;
+    const next = Math.max(SOLVE_MIN_MS, Math.round(remaining * SOLVE_SHRINK));
+    if (next >= remaining) return;
+    this.roundEndsAt = now + next;
+    clearTimeout(this.roundEndTimer);
+    const fn = this.roundExpire;
+    this.roundEndTimer = setTimeout(() => {
+      this.roundEndTimer = null;
+      fn();
+    }, next);
+    this.io.to(this.id).emit("minigame:timer", { endsAt: this.roundEndsAt });
+  }
+
   /** Host-only: remove another player while still in the lobby. */
   kickPlayer(hostId: string, targetId: string): void {
     if (!this.isHost(hostId)) throw new Error("Only the host can kick players.");
@@ -738,7 +784,12 @@ export class Lobby {
       WORDLE_CONFIG.maxGuesses,
     );
     const seconds = this.roundSecondsFor("wordle");
-    const endsAt = Date.now() + seconds * 1000;
+    const endsAt = this.armRoundTimer("wordle", seconds, () => {
+      if (this.wordle) {
+        this.wordle.finishAll();
+        this.endWordle();
+      }
+    });
 
     this.io.to(this.id).emit("minigame:start", {
       type: "wordle",
@@ -753,23 +804,18 @@ export class Lobby {
     this.resendActive = (sid) => {
       this.io.to(sid).emit("minigame:start", {
         type: "wordle",
-        wordle: { wordLength: WORDLE_CONFIG.wordLength, maxGuesses: WORDLE_CONFIG.maxGuesses, roundSeconds: seconds, endsAt },
+        wordle: { wordLength: WORDLE_CONFIG.wordLength, maxGuesses: WORDLE_CONFIG.maxGuesses, roundSeconds: seconds, endsAt: this.roundEndsAt },
       });
       this.emitStandings();
     };
-
-    this.schedule(() => {
-      if (this.wordle) {
-        this.wordle.finishAll();
-        this.endWordle();
-      }
-    }, seconds * 1000);
   }
 
   handleWordleGuess(playerId: string, guess: string) {
     if (this.phase !== "minigame" || !this.wordle) throw new Error("No active round.");
     const outcome = this.wordle.guess(playerId, guess);
     this.emitStandings();
+    // Every solve pulls the shared clock in.
+    if (outcome.solved) this.shrinkRoundTimer();
     this.maybeEndWordle();
     return outcome;
   }
@@ -967,7 +1013,11 @@ export class Lobby {
     // Reveal up to two hint letters across the turn (at ~1/3 and ~2/3).
     this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.34));
     this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.67));
-    this.schedule(() => this.finishSkribblTurn(), total);
+    // The turn's finish lives in its own handle so a correct guess can shrink it.
+    this.skribblTurnTimer = setTimeout(() => {
+      this.skribblTurnTimer = null;
+      this.finishSkribblTurn();
+    }, total);
   }
 
   private revealSkribblHint(): void {
@@ -998,6 +1048,17 @@ export class Lobby {
   handleSkribblGuess(playerId: string, text: string): { correct: boolean; close: boolean } {
     if (this.phase !== "minigame" || !this.skribbl) throw new Error("No active round.");
     const { correct, turnComplete, close } = this.skribbl.guess(playerId, text);
+    // Each correct guess pulls the turn's clock in (unless the timer is off).
+    if (correct && !turnComplete && this.settings.games.skribbl.timerEnabled) {
+      const newEnd = this.skribbl.shrinkTurn(SOLVE_SHRINK, SOLVE_MIN_MS);
+      if (newEnd && this.skribblTurnTimer) {
+        clearTimeout(this.skribblTurnTimer);
+        this.skribblTurnTimer = setTimeout(() => {
+          this.skribblTurnTimer = null;
+          this.finishSkribblTurn();
+        }, Math.max(0, newEnd - Date.now()));
+      }
+    }
     this.broadcastSkribbl();
     if (turnComplete) this.finishSkribblTurn();
     return { correct, close };
@@ -1335,23 +1396,21 @@ export class Lobby {
     this.currentMinigame = game;
     this.puzzle = new PuzzleRound(participants.map((p) => p.id), spec);
     const seconds = this.roundSecondsFor(game);
-    const endsAt = Date.now() + seconds * 1000;
+    const endsAt = this.armRoundTimer(game, seconds, () => {
+      if (this.puzzle) {
+        this.puzzle.finishAll();
+        this.endPuzzle();
+      }
+    });
 
     this.io.to(this.id).emit("minigame:start", { type: game });
     this.io.to(this.id).emit("puzzle:start", { game, spec, endsAt, roundSeconds: seconds });
     this.emitPuzzleStandings();
     this.resendActive = (sid) => {
       this.io.to(sid).emit("minigame:start", { type: game });
-      this.io.to(sid).emit("puzzle:start", { game, spec, endsAt, roundSeconds: seconds });
+      this.io.to(sid).emit("puzzle:start", { game, spec, endsAt: this.roundEndsAt, roundSeconds: seconds });
       this.emitPuzzleStandings();
     };
-
-    this.schedule(() => {
-      if (this.puzzle) {
-        this.puzzle.finishAll();
-        this.endPuzzle();
-      }
-    }, seconds * 1000);
   }
 
   handlePuzzleSubmit(playerId: string, solution: number[]): { solved: boolean } {
@@ -1359,6 +1418,7 @@ export class Lobby {
     const res = this.puzzle.submit(playerId, solution);
     if (res.solved) {
       this.emitPuzzleStandings();
+      this.shrinkRoundTimer();
       if (this.puzzle.isComplete()) this.endPuzzle();
     }
     return res;
@@ -1417,7 +1477,12 @@ export class Lobby {
     this.currentMinigame = "guesscountry";
     this.guessCountry = new GuessCountryRound(participants.map((p) => p.id), answer);
     const seconds = this.roundSecondsFor("guesscountry");
-    const endsAt = Date.now() + seconds * 1000;
+    const endsAt = this.armRoundTimer("guesscountry", seconds, () => {
+      if (this.guessCountry) {
+        this.guessCountry.finishAll();
+        this.endGuessCountry();
+      }
+    });
 
     this.io.to(this.id).emit("minigame:start", { type: "guesscountry" });
     // Send the silhouette geometry only — never the country's code/name.
@@ -1432,25 +1497,19 @@ export class Lobby {
       this.io.to(sid).emit("minigame:start", { type: "guesscountry" });
       this.io.to(sid).emit("guesscountry:start", {
         geometry: WORLD_GEOMETRY[answer.code],
-        endsAt,
+        endsAt: this.roundEndsAt,
         roundSeconds: seconds,
         maxTries: 8,
       });
       this.emitGeoStandings();
     };
-
-    this.schedule(() => {
-      if (this.guessCountry) {
-        this.guessCountry.finishAll();
-        this.endGuessCountry();
-      }
-    }, seconds * 1000);
   }
 
   handleGuessCountryGuess(playerId: string, name: string) {
     if (this.phase !== "minigame" || !this.guessCountry) throw new Error("No active round.");
     const res = this.guessCountry.guess(playerId, name);
     this.emitGeoStandings();
+    if (res.guess.correct) this.shrinkRoundTimer();
     if (this.guessCountry.isComplete()) this.endGuessCountry();
     return res;
   }
@@ -1535,29 +1594,28 @@ export class Lobby {
     this.currentMinigame = "travle";
     this.travle = new TravleRound(participants.map((p) => p.id), start, end);
     const seconds = this.roundSecondsFor("travle");
-    const endsAt = Date.now() + seconds * 1000;
+    const endsAt = this.armRoundTimer("travle", seconds, () => {
+      if (this.travle) {
+        this.travle.finishAll();
+        this.endTravle();
+      }
+    });
 
     this.io.to(this.id).emit("minigame:start", { type: "travle" });
     this.io.to(this.id).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
     this.emitTravleStandings();
     this.resendActive = (sid) => {
       this.io.to(sid).emit("minigame:start", { type: "travle" });
-      this.io.to(sid).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
+      this.io.to(sid).emit("travle:start", { startCode: start, endCode: end, endsAt: this.roundEndsAt, roundSeconds: seconds });
       this.emitTravleStandings();
     };
-
-    this.schedule(() => {
-      if (this.travle) {
-        this.travle.finishAll();
-        this.endTravle();
-      }
-    }, seconds * 1000);
   }
 
   handleTravleGuess(playerId: string, name: string) {
     if (this.phase !== "minigame" || !this.travle) throw new Error("No active round.");
     const res = this.travle.guess(playerId, name);
     this.emitTravleStandings();
+    if (res.connected) this.shrinkRoundTimer();
     if (this.travle.isComplete()) this.endTravle();
     return res;
   }
@@ -1668,10 +1726,7 @@ export class Lobby {
       }
       if (this.pong.isComplete()) this.endPong();
     }, 33);
-    // Hard time cap — matches usually finish well before this.
-    this.schedule(() => {
-      if (this.pong) this.endPong();
-    }, this.roundSecondsFor("pong") * 1000);
+    // No timer: matches run until every duel has reached the target score.
   }
 
   handlePongMove(playerId: string, y: number): void {
@@ -1762,9 +1817,7 @@ export class Lobby {
       }
       if (this.hide.isComplete()) this.endVerstecken();
     }, 50); // 20 Hz
-    this.schedule(() => {
-      if (this.hide) this.endVerstecken();
-    }, roundMs);
+    // No timer: the round runs until the seeker has caught every hider.
   }
 
   handleHideMove(playerId: string, dx: number, dy: number): void {
@@ -1773,6 +1826,14 @@ export class Lobby {
 
   handleHideStab(playerId: string): void {
     if (this.phase === "minigame") this.hide?.stab(playerId);
+  }
+
+  handleHideTeleport(playerId: string, x: number, y: number): void {
+    if (this.phase === "minigame") this.hide?.teleport(playerId, x, y);
+  }
+
+  handleHideAim(playerId: string, angle: number): void {
+    if (this.phase === "minigame") this.hide?.setAim(playerId, angle);
   }
 
   private endVerstecken(): void {
@@ -1868,9 +1929,7 @@ export class Lobby {
       }
       if (this.battle.isComplete()) this.endBattle();
     }, 33); // 30 Hz
-    this.schedule(() => {
-      if (this.battle) this.endBattle();
-    }, roundMs);
+    // No timer: the free-for-all runs until one player is left standing.
   }
 
   handleBattleMove(playerId: string, dx: number, dy: number): void {
@@ -1959,9 +2018,7 @@ export class Lobby {
       }
       if (this.runner.isComplete()) this.endRunner();
     }, 33); // 30 Hz
-    this.schedule(() => {
-      if (this.runner) this.endRunner();
-    }, roundMs);
+    // No timer: the race runs until only one runner remains.
   }
 
   handleRunnerMove(playerId: string, dir: number, duck: boolean): void {
@@ -2172,6 +2229,16 @@ export class Lobby {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    if (this.roundEndTimer) {
+      clearTimeout(this.roundEndTimer);
+      this.roundEndTimer = null;
+    }
+    this.roundExpire = null;
+    this.roundShrinkable = false;
+    if (this.skribblTurnTimer) {
+      clearTimeout(this.skribblTurnTimer);
+      this.skribblTurnTimer = null;
     }
   }
 

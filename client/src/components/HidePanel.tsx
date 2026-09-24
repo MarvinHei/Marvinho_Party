@@ -7,7 +7,8 @@ import { drawToken, drawKnife } from "./pixelChar.js";
 import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
-const VISION = 7; // must match the server
+const FLASH_RANGE = 9; // fallback seeker flashlight range (server sends the real one)
+const NEAR = 2.6; // full-circle awareness right around the seeker (matches server)
 const STAB_MS = 300; // knife-thrust animation length
 
 export function HidePanel({ seat }: { seat: SeatState }) {
@@ -25,6 +26,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   const stab = useRef({ at: -1, angle: 0 });
   const smoother = useRef(new PosSmoother());
   const lastT = useRef(performance.now());
+  const lastAim = useRef(0); // throttle for seeker aim updates
 
   const init = hide?.init;
   const isSeeker = init?.role === "seeker";
@@ -79,6 +81,11 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           store.net(seat.id)?.hideStab();
           sfx("stab");
         }
+        return;
+      }
+      if (key === "e") {
+        e.preventDefault();
+        if (!e.repeat) tryTeleport();
         return;
       }
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
@@ -177,16 +184,38 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         }
         smoother.current.end();
       }
-      // Seeker fog: darken beyond the vision radius.
+      // Seeker flashlight: everything is dark except a cone toward the cursor
+      // (plus a small circle of awareness right around the seeker).
       if (isSeeker && meDisp) {
-        const grad = ctx.createRadialGradient(
-          meDisp.x * TILE, meDisp.y * TILE, VISION * TILE * 0.55,
-          meDisp.x * TILE, meDisp.y * TILE, VISION * TILE,
-        );
-        grad.addColorStop(0, "rgba(6,5,20,0)");
-        grad.addColorStop(1, "rgba(6,5,20,0.82)");
-        ctx.fillStyle = grad;
+        const cx = meDisp.x * TILE;
+        const cy = meDisp.y * TILE;
+        const range = (s?.flashRange ?? FLASH_RANGE) * TILE;
+        const half = s?.flashHalfAngle ?? 0.8;
+        const aim = Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
+        ctx.save();
+        ctx.fillStyle = "rgba(5,4,18,0.9)";
         ctx.fillRect(0, 0, W, H);
+        // Punch the lit areas back out of the darkness.
+        ctx.globalCompositeOperation = "destination-out";
+        const nr = NEAR * TILE;
+        const ng = ctx.createRadialGradient(cx, cy, 0, cx, cy, nr);
+        ng.addColorStop(0, "rgba(0,0,0,0.95)");
+        ng.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = ng;
+        ctx.beginPath();
+        ctx.arc(cx, cy, nr, 0, Math.PI * 2);
+        ctx.fill();
+        const cg = ctx.createRadialGradient(cx, cy, nr * 0.4, cx, cy, range);
+        cg.addColorStop(0, "rgba(0,0,0,1)");
+        cg.addColorStop(0.7, "rgba(0,0,0,0.9)");
+        cg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, range, aim - half, aim + half);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
       }
       // Radar pings (seeker only): pulsing markers over the fog.
       if (s && s.pings.length) {
@@ -211,28 +240,58 @@ export function HidePanel({ seat }: { seat: SeatState }) {
     return () => cancelAnimationFrame(raf);
   }, [cols, rows, walls, isSeeker, seat.playerId]);
 
-  function toTile(e: React.PointerEvent<HTMLCanvasElement>) {
+  function updateCursor(clientX: number, clientY: number) {
     const rect = canvasRef.current!.getBoundingClientRect();
     cursor.current = {
-      x: ((e.clientX - rect.left) / rect.width) * cols,
-      y: ((e.clientY - rect.top) / rect.height) * rows,
+      x: ((clientX - rect.left) / rect.width) * cols,
+      y: ((clientY - rect.top) / rect.height) * rows,
     };
+  }
+  function toTile(e: React.PointerEvent<HTMLCanvasElement>) {
+    updateCursor(e.clientX, e.clientY);
+    // Seekers stream their aim so the server's flashlight cone matches the cursor.
+    if (isSeeker) {
+      const now = performance.now();
+      if (now - lastAim.current > 60) {
+        lastAim.current = now;
+        const me = snapRef.current?.players.find((p) => p.id === seat.playerId);
+        if (me) store.net(seat.id)?.hideAim(Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x));
+      }
+    }
+  }
+  /** Blink to the cursor tile if the cooldown is ready. */
+  function tryTeleport() {
+    if ((snapRef.current?.teleportCd ?? 1) > 0) return;
+    if (isSeeker && !snapRef.current?.released) return;
+    store.net(seat.id)?.hideTeleport(cursor.current.x, cursor.current.y);
+    sfx("submit");
   }
   function onStab(e: React.PointerEvent<HTMLCanvasElement>) {
     toTile(e);
-    if (isSeeker && snapRef.current?.released) {
+    if (isSeeker) {
+      if (!snapRef.current?.released) return;
       const me = snapRef.current.players.find((p) => p.id === seat.playerId);
       if (me) stab.current = { at: performance.now(), angle: Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x) };
       store.net(seat.id)?.hideStab();
       sfx("stab");
+    } else {
+      // Hiders have no knife — a click blinks them to safety.
+      tryTeleport();
     }
+  }
+  function onContext(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Right-click blinks (handy for the seeker, whose left-click stabs).
+    e.preventDefault();
+    updateCursor(e.clientX, e.clientY);
+    tryTeleport();
   }
 
   if (!hide || !init) return null;
   const snap = hide.snap;
   const now = Date.now();
   const releaseIn = Math.max(0, Math.ceil((init.releaseAt - now) / 1000));
-  const secsLeft = snap ? Math.ceil(snap.msLeft / 1000) : 0;
+  const tpCd = snap ? Math.ceil(snap.teleportCd / 1000) : 30;
+  const tpReady = tpCd <= 0;
   const held = releaseIn > 0 && isSeeker;
 
   return (
@@ -242,7 +301,9 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           {isSeeker ? "🔪 SEEKER" : "🫥 HIDER"}
         </span>
         <span className="hide-info pixel">{snap?.aliveHiders ?? "?"} hiders left</span>
-        <span className="hide-info pixel">⏱ {secsLeft}s</span>
+        <span className="hide-info pixel" style={{ color: tpReady ? "#28e0d0" : undefined }}>
+          🌀 {tpReady ? "Blink ready" : `${tpCd}s`}
+        </span>
       </div>
       <div className="hide-field-frame" style={{ aspectRatio: `${cols} / ${rows}` }}>
         <canvas
@@ -252,6 +313,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
           className="hide-canvas"
           onPointerMove={toTile}
           onPointerDown={onStab}
+          onContextMenu={onContext}
         />
         {releaseIn > 0 && (
           <div className="hide-banner">
@@ -271,8 +333,8 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         {held
           ? "You're the seeker — get ready to hunt"
           : isSeeker
-            ? "WASD to move · click or Space to stab a nearby hider"
-            : "WASD to move · stay out of the seeker's sight"}
+            ? "WASD move · click/Space stab · aim your flashlight · right-click or E to blink"
+            : "WASD move · click or E to blink to a spot · stay out of the light"}
       </div>
     </div>
   );

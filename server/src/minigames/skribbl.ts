@@ -199,6 +199,19 @@ export class SkribblGame {
     return { correct: false, turnComplete: false, close };
   }
 
+  /** Pull the current turn's deadline in (called when a guesser gets it right).
+   *  Returns the new deadline, or null if it wasn't shortened. */
+  shrinkTurn(factor: number, minMs: number): number | null {
+    if (this.phase !== "drawing") return null;
+    const now = Date.now();
+    const remaining = this.endsAt - now;
+    if (remaining <= 0) return null;
+    const next = Math.max(minMs, Math.round(remaining * factor));
+    if (next >= remaining) return null;
+    this.endsAt = now + next;
+    return this.endsAt;
+  }
+
   /** End the current turn: award the drawer and reveal the word. */
   endTurn(): void {
     if (this.phase === "turnEnd") return;

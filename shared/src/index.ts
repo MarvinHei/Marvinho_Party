@@ -792,12 +792,22 @@ export interface PongInitPayload {
   vsCpu: boolean;
 }
 
+/** Pong power-up awarded to the player who scores a point. "fast" makes the
+ *  ball rocket off the holder's own paddle; "shrink" shrinks the opponent's. */
+export type PongPowerKind = "fast" | "shrink";
+
 /** Frequently-broadcast snapshot of one player's match (coords normalized 0..1). */
 export interface PongStatePayload {
   ballX: number;
   ballY: number;
   padL: number; // left paddle center y (0..1)
   padR: number; // right paddle center y (0..1)
+  /** Effective paddle half-heights (shrink power reduces one). */
+  padHalfL: number;
+  padHalfR: number;
+  /** Active power-up per side (held by the player on that side), or null. */
+  powerL: PongPowerKind | null;
+  powerR: PongPowerKind | null;
   scoreL: number;
   scoreR: number;
   over: boolean;
@@ -843,6 +853,11 @@ export interface HideStatePayload {
   meCaught: boolean;
   /** Radar-ping hider positions, shown to the seeker for a short window. */
   pings: { x: number; y: number }[];
+  /** ms until this player's next teleport is ready (0 = ready now). */
+  teleportCd: number;
+  /** Seeker flashlight cone half-angle (radians) and range (tiles), for rendering. */
+  flashHalfAngle: number;
+  flashRange: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1117,10 @@ export interface ClientToServerEvents {
   "hide:move": (payload: { dx: number; dy: number }) => void;
   /** Verstecken — the seeker attempts a catch (dagger stab). */
   "hide:stab": () => void;
+  /** Verstecken — teleport to a map position (on a cooldown). */
+  "hide:teleport": (payload: { x: number; y: number }) => void;
+  /** Verstecken — the seeker aims their flashlight (radians). */
+  "hide:aim": (payload: { angle: number }) => void;
 
   /** Battle Royale — set this player's movement direction (each -1..1). */
   "battle:move": (payload: { dx: number; dy: number }) => void;
@@ -1155,6 +1174,9 @@ export interface ServerToClientEvents {
     type: MinigameType;
     wordle?: WordleStartPayload;
   }) => void;
+
+  /** The active timed round's deadline moved (e.g. shrunk after a solve). */
+  "minigame:timer": (payload: { endsAt: number }) => void;
 
   "wordle:standings": (standings: WordleStanding[]) => void;
 

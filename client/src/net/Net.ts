@@ -184,6 +184,19 @@ export class Net {
       });
     });
 
+    this.socket.on("minigame:timer", ({ endsAt }) => {
+      // A timed round's deadline moved (shrunk as players solved). Patch
+      // whichever countdown-based game this seat is currently in.
+      this.patch((prev) => {
+        const p: SeatPatch = {};
+        if (prev.wordle) p.wordle = { ...prev.wordle, endsAt };
+        if (prev.puzzle) p.puzzle = { ...prev.puzzle, endsAt };
+        if (prev.guessCountry) p.guessCountry = { ...prev.guessCountry, endsAt };
+        if (prev.travle) p.travle = { ...prev.travle, endsAt };
+        return p;
+      });
+    });
+
     this.socket.on("wordle:standings", (standings) => {
       this.patch({ standings });
     });
@@ -603,6 +616,16 @@ export class Net {
   /** Verstecken — seeker stab (attempt a catch). */
   hideStab() {
     this.socket.emit("hide:stab");
+  }
+
+  /** Verstecken — blink to a map position (on cooldown). */
+  hideTeleport(x: number, y: number) {
+    this.socket.emit("hide:teleport", { x, y });
+  }
+
+  /** Verstecken — aim the seeker's flashlight (radians). */
+  hideAim(angle: number) {
+    this.socket.emit("hide:aim", { angle });
   }
 
   /** Battle Royale — send this player's movement direction. */
