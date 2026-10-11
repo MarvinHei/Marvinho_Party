@@ -7,8 +7,8 @@ import { drawToken, drawKnife } from "./pixelChar.js";
 import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
-const FLASH_RANGE = 6.5; // fallback seeker flashlight range (server sends the real one)
-const NEAR = 2.1; // full-circle awareness right around the seeker (matches server)
+const FLASH_RANGE = 5.0; // fallback seeker flashlight range (server sends the real one)
+const NEAR = 1.4; // full-circle awareness right around the seeker (matches server)
 const STAB_MS = 300; // knife-thrust animation length
 
 export function HidePanel({ seat }: { seat: SeatState }) {
@@ -195,9 +195,9 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         const cy = meDisp.y * TILE;
         // Draw the cone a touch wider/longer than the server's detection cone, so
         // every hider the server reveals sits comfortably inside the light.
-        const range = ((s?.flashRange ?? FLASH_RANGE) + 0.7) * TILE;
-        const half = (s?.flashHalfAngle ?? 0.8) + 0.11;
-        const nr = (NEAR + 0.5) * TILE;
+        const range = ((s?.flashRange ?? FLASH_RANGE) + 0.5) * TILE;
+        const half = (s?.flashHalfAngle ?? 0.8) + 0.1;
+        const nr = (NEAR + 0.35) * TILE;
         // Use the SERVER's aim so the lit area is exactly what the server reveals.
         const aim = s ? s.flashAim : Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
         let fog = fogRef.current;
