@@ -27,6 +27,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
   const smoother = useRef(new PosSmoother());
   const lastT = useRef(performance.now());
   const lastAim = useRef(0); // throttle for seeker aim updates
+  const fogRef = useRef<HTMLCanvasElement | null>(null); // offscreen blindness layer
 
   const init = hide?.init;
   const isSeeker = init?.role === "seeker";
@@ -184,9 +185,11 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         }
         smoother.current.end();
       }
-      // Seeker flashlight: inside the cone the field is shown fully — exactly as
-      // if there were no restriction at all — and everything outside it is solid
-      // darkness. The lit area is carved out crisply (no soft/smeary gradient).
+      // Seeker flashlight: inside the cone the world looks exactly as it does for
+      // the hiders (the real scene, full colour); outside it's the dark blindness.
+      // We build a dark overlay WITH A HOLE on an offscreen canvas and composite
+      // it over the scene, so the lit area shows the untouched scene underneath
+      // (compositing straight onto the main canvas would erase the scene itself).
       if (isSeeker && meDisp) {
         const cx = meDisp.x * TILE;
         const cy = meDisp.y * TILE;
@@ -197,22 +200,37 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         const nr = (NEAR + 0.5) * TILE;
         // Use the SERVER's aim so the lit area is exactly what the server reveals.
         const aim = s ? s.flashAim : Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
-        ctx.save();
-        // Near-opaque darkness over the whole field…
-        ctx.fillStyle = "rgba(4,3,14,0.985)";
-        ctx.fillRect(0, 0, W, H);
-        // …then fully carve out the near circle + the aimed cone (crisp edges).
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.fillStyle = "#000";
-        ctx.beginPath();
-        ctx.arc(cx, cy, nr, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, range, aim - half, aim + half);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
+        let fog = fogRef.current;
+        if (!fog) {
+          fog = document.createElement("canvas");
+          fogRef.current = fog;
+        }
+        if (fog.width !== W || fog.height !== H) {
+          fog.width = W;
+          fog.height = H;
+        }
+        const fctx = fog.getContext("2d");
+        if (fctx) {
+          fctx.setTransform(1, 0, 0, 1, 0, 0);
+          fctx.clearRect(0, 0, W, H);
+          // Solid darkness everywhere…
+          fctx.globalCompositeOperation = "source-over";
+          fctx.fillStyle = "rgba(6,5,20,0.93)";
+          fctx.fillRect(0, 0, W, H);
+          // …then cut the lit area (near circle + aimed cone) out to transparency.
+          fctx.globalCompositeOperation = "destination-out";
+          fctx.fillStyle = "#000";
+          fctx.beginPath();
+          fctx.arc(cx, cy, nr, 0, Math.PI * 2);
+          fctx.fill();
+          fctx.beginPath();
+          fctx.moveTo(cx, cy);
+          fctx.arc(cx, cy, range, aim - half, aim + half);
+          fctx.closePath();
+          fctx.fill();
+          // Lay the darkness-with-a-hole over the real scene.
+          ctx.drawImage(fog, 0, 0);
+        }
       }
       // Radar pings (seeker only): pulsing markers over the fog.
       if (s && s.pings.length) {
