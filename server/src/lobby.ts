@@ -1782,8 +1782,10 @@ export class Lobby {
     }));
     this.phase = "minigame";
     this.currentMinigame = "verstecken";
-    const roundMs = this.roundSecondsFor("verstecken") * 1000;
     const holdMs = 12000; // hiders get a head start before the seeker is loosed
+    // The round length scales with the lobby size: more hiders → a longer hunt.
+    const hunterSeconds = 30 + Math.max(0, players.length - 2) * 12;
+    const roundMs = holdMs + hunterSeconds * 1000;
     this.hide = new HideRound(players, holdMs, roundMs);
     this.io.to(this.id).emit("minigame:start", { type: "verstecken" });
     const walls = this.hide.encodedWalls();

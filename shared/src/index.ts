@@ -868,9 +868,12 @@ export interface HideStatePayload {
   pings: { x: number; y: number }[];
   /** ms until this player's next teleport is ready (0 = ready now). */
   teleportCd: number;
-  /** Seeker flashlight cone half-angle (radians) and range (tiles), for rendering. */
+  /** Seeker flashlight cone half-angle (radians), range (tiles) and current aim
+   *  (radians) — the aim the SERVER uses to cull, so the client draws the exact
+   *  same cone it detects with. (aim is 0 for hiders.) */
   flashHalfAngle: number;
   flashRange: number;
+  flashAim: number;
 }
 
 // ---------------------------------------------------------------------------

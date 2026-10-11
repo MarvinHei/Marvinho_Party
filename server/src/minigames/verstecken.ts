@@ -15,9 +15,9 @@ const HIDER_SPEED = 5.6; // tiles / second
 const SEEKER_SPEED = 8.8; // much faster, so hiders must really use cover
 const RADIUS = 0.36;
 const CATCH_RANGE = 1.2; // tiles — how close a stab reaches
-const VISION = 9; // seeker flashlight range (tiles)
-const NEAR_VISION = 2.6; // full-circle awareness right around the seeker
-const FLASH_HALF_ANGLE = Math.PI * 0.26; // ~47° half-angle flashlight cone
+const VISION = 6.5; // seeker flashlight range (tiles) — shorter beam
+const NEAR_VISION = 2.1; // full-circle awareness right around the seeker
+const FLASH_HALF_ANGLE = Math.PI * 0.2; // ~36° half-angle — a bit narrower
 const PING_INTERVAL = 5000; // ms — seeker gets a radar ping of hiders this often
 const PING_SHOW_MS = 2200; // how long each ping stays on the seeker's screen
 const TELEPORT_CD = 30000; // ms — every player may blink to a spot this often
@@ -232,6 +232,7 @@ export class HideRound {
       teleportCd: this.teleportCd(id),
       flashHalfAngle: FLASH_HALF_ANGLE,
       flashRange: VISION,
+      flashAim: isSeeker ? me?.aim ?? 0 : 0,
     };
   }
 

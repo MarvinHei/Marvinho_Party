@@ -7,8 +7,8 @@ import { drawToken, drawKnife } from "./pixelChar.js";
 import { PosSmoother } from "./interp.js";
 
 const TILE = 28;
-const FLASH_RANGE = 9; // fallback seeker flashlight range (server sends the real one)
-const NEAR = 2.6; // full-circle awareness right around the seeker (matches server)
+const FLASH_RANGE = 6.5; // fallback seeker flashlight range (server sends the real one)
+const NEAR = 2.1; // full-circle awareness right around the seeker (matches server)
 const STAB_MS = 300; // knife-thrust animation length
 
 export function HidePanel({ seat }: { seat: SeatState }) {
@@ -191,7 +191,10 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         const cy = meDisp.y * TILE;
         const range = (s?.flashRange ?? FLASH_RANGE) * TILE;
         const half = s?.flashHalfAngle ?? 0.8;
-        const aim = Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
+        // Draw the cone from the SERVER's aim so the visible light is exactly the
+        // area the server reveals hiders in — the true field of view. Fall back to
+        // the local cursor only until the first snapshot arrives.
+        const aim = s ? s.flashAim : Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
         ctx.save();
         ctx.fillStyle = "rgba(5,4,18,0.9)";
         ctx.fillRect(0, 0, W, H);
@@ -252,7 +255,7 @@ export function HidePanel({ seat }: { seat: SeatState }) {
     // Seekers stream their aim so the server's flashlight cone matches the cursor.
     if (isSeeker) {
       const now = performance.now();
-      if (now - lastAim.current > 60) {
+      if (now - lastAim.current > 33) {
         lastAim.current = now;
         const me = snapRef.current?.players.find((p) => p.id === seat.playerId);
         if (me) store.net(seat.id)?.hideAim(Math.atan2(cursor.current.y - me.y, cursor.current.x - me.x));
