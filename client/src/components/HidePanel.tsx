@@ -184,35 +184,29 @@ export function HidePanel({ seat }: { seat: SeatState }) {
         }
         smoother.current.end();
       }
-      // Seeker flashlight: everything is dark except a cone toward the cursor
-      // (plus a small circle of awareness right around the seeker).
+      // Seeker flashlight: inside the cone the field is shown fully — exactly as
+      // if there were no restriction at all — and everything outside it is solid
+      // darkness. The lit area is carved out crisply (no soft/smeary gradient).
       if (isSeeker && meDisp) {
         const cx = meDisp.x * TILE;
         const cy = meDisp.y * TILE;
-        const range = (s?.flashRange ?? FLASH_RANGE) * TILE;
-        const half = s?.flashHalfAngle ?? 0.8;
-        // Draw the cone from the SERVER's aim so the visible light is exactly the
-        // area the server reveals hiders in — the true field of view. Fall back to
-        // the local cursor only until the first snapshot arrives.
+        // Draw the cone a touch wider/longer than the server's detection cone, so
+        // every hider the server reveals sits comfortably inside the light.
+        const range = ((s?.flashRange ?? FLASH_RANGE) + 0.7) * TILE;
+        const half = (s?.flashHalfAngle ?? 0.8) + 0.11;
+        const nr = (NEAR + 0.5) * TILE;
+        // Use the SERVER's aim so the lit area is exactly what the server reveals.
         const aim = s ? s.flashAim : Math.atan2(cursor.current.y - meDisp.y, cursor.current.x - meDisp.x);
         ctx.save();
-        ctx.fillStyle = "rgba(5,4,18,0.9)";
+        // Near-opaque darkness over the whole field…
+        ctx.fillStyle = "rgba(4,3,14,0.985)";
         ctx.fillRect(0, 0, W, H);
-        // Punch the lit areas back out of the darkness.
+        // …then fully carve out the near circle + the aimed cone (crisp edges).
         ctx.globalCompositeOperation = "destination-out";
-        const nr = NEAR * TILE;
-        const ng = ctx.createRadialGradient(cx, cy, 0, cx, cy, nr);
-        ng.addColorStop(0, "rgba(0,0,0,0.95)");
-        ng.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = ng;
+        ctx.fillStyle = "#000";
         ctx.beginPath();
         ctx.arc(cx, cy, nr, 0, Math.PI * 2);
         ctx.fill();
-        const cg = ctx.createRadialGradient(cx, cy, nr * 0.4, cx, cy, range);
-        cg.addColorStop(0, "rgba(0,0,0,1)");
-        cg.addColorStop(0.7, "rgba(0,0,0,0.9)");
-        cg.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = cg;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, range, aim - half, aim + half);
