@@ -1,4 +1,5 @@
 import { TETRIS_CONFIG, type TetrisBoardSnapshot } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 interface PlayerInfo {
   id: string;
@@ -18,6 +19,8 @@ interface BoardState {
  * tracks who is still alive to decide the winner.
  */
 export class TetrisMatch {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly seed: number;
   private info = new Map<string, PlayerInfo>();
   private order: string[];
@@ -26,8 +29,9 @@ export class TetrisMatch {
   private targets = new Map<string, string>();
   private boards = new Map<string, BoardState>();
 
-  constructor(players: PlayerInfo[]) {
-    this.seed = Math.floor(Math.random() * 2 ** 31);
+  constructor(players: PlayerInfo[], env: GameEnv = realEnv) {
+    this.env = env;
+    this.seed = Math.floor(this.env.random() * 2 ** 31);
     this.order = players.map((p) => p.id);
     for (const p of players) {
       this.info.set(p.id, p);
@@ -77,7 +81,7 @@ export class TetrisMatch {
 
     const recipient = this.resolveTarget(sender);
     if (!recipient) return null;
-    const hole = Math.floor(Math.random() * TETRIS_CONFIG.cols);
+    const hole = Math.floor(this.env.random() * TETRIS_CONFIG.cols);
     return { recipientId: recipient, rows, hole };
   }
 

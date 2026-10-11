@@ -7,6 +7,7 @@ import {
   randomSpawn,
   isWall,
 } from "./arena.js";
+import { realEnv, type GameEnv } from "./env.js";
 
 const COLS = 34;
 const ROWS = 20;
@@ -70,6 +71,8 @@ export interface BattleStats {
 }
 
 export class BattleRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly arena: Arena;
   readonly endsAt: number;
   private players = new Map<string, BP>();
@@ -78,12 +81,13 @@ export class BattleRound {
   private lastPowerAt = 0;
   private deaths = 0;
 
-  constructor(players: BattlePlayer[], roundMs: number) {
-    this.arena = generateArena(COLS, ROWS);
-    this.endsAt = Date.now() + roundMs;
-    this.lastPowerAt = Date.now() - POWER_SPAWN_MS + 2500; // first one soon after start
+  constructor(players: BattlePlayer[], roundMs: number, env: GameEnv = realEnv) {
+    this.env = env;
+    this.arena = generateArena(COLS, ROWS, env.random);
+    this.endsAt = this.env.now() + roundMs;
+    this.lastPowerAt = this.env.now() - POWER_SPAWN_MS + 2500; // first one soon after start
     for (const p of players) {
-      const spawn = randomSpawn(this.arena, RADIUS);
+      const spawn = randomSpawn(this.arena, RADIUS, env.random);
       this.players.set(p.id, {
         id: p.id,
         name: p.nickname,
@@ -120,7 +124,7 @@ export class BattleRound {
   shoot(id: string, angle: number): void {
     const p = this.players.get(id);
     if (!p || !p.alive) return;
-    const now = Date.now();
+    const now = this.env.now();
     const cooldown = p.power === "autofire" ? AUTOFIRE_COOLDOWN : SHOOT_COOLDOWN;
     if (now - p.lastShot < cooldown) return;
     p.lastShot = now;
@@ -139,16 +143,16 @@ export class BattleRound {
   }
 
   private spawnPowerup(): void {
-    const spot = randomSpawn(this.arena, 0.3);
+    const spot = randomSpawn(this.arena, 0.3, this.env.random);
     this.powerups.push({
       x: spot.x,
       y: spot.y,
-      kind: POWER_KINDS[Math.floor(Math.random() * POWER_KINDS.length)],
+      kind: POWER_KINDS[Math.floor(this.env.random() * POWER_KINDS.length)],
     });
   }
 
   tick(dt: number): void {
-    const now = Date.now();
+    const now = this.env.now();
 
     // Spawn power-ups over time, up to a cap.
     if (now - this.lastPowerAt >= POWER_SPAWN_MS && this.powerups.length < MAX_POWERUPS) {
@@ -233,7 +237,7 @@ export class BattleRound {
     return {
       ...base,
       meAlive: this.players.get(id)?.alive ?? false,
-      msLeft: Math.max(0, this.endsAt - Date.now()),
+      msLeft: Math.max(0, this.endsAt - this.env.now()),
     };
   }
 

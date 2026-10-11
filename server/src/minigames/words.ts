@@ -1,3 +1,4 @@
+import { pick, type Rng } from "./env.js";
 // Wordle word pools, sourced from the official Wordle word lists.
 // The concrete data lives in wordleWordList.ts (auto-generated); this module
 // keeps the small, stable API the rest of the server consumes.
@@ -17,6 +18,6 @@ export function isValidWord(word: string): boolean {
 }
 
 // Answers are always drawn from the curated (common) answer list.
-export function randomWord(): string {
-  return WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
+export function randomWord(rng: Rng = Math.random): string {
+  return pick(rng, WORD_LIST);
 }

@@ -1,4 +1,5 @@
 import type { PongPowerKind, PongPowerup, PongStatePayload } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 // Field is normalized 0..1 on both axes; the client renders it into a wide box.
 const PAD_X_L = 0.04;
@@ -68,12 +69,15 @@ export interface PongStats {
 const CPU_SLOT = (): Slot => ({ playerId: null, name: "CPU", color: "#8a8aa8" });
 
 export class PongRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private matches: Match[] = [];
   /** playerId → its match + side. */
   private index = new Map<string, { match: Match; side: "left" | "right" }>();
 
-  constructor(players: PongPlayer[], readonly target: number) {
-    const shuffled = [...players].sort(() => Math.random() - 0.5);
+  constructor(players: PongPlayer[], readonly target: number, env: GameEnv = realEnv) {
+    this.env = env;
+    const shuffled = [...players].sort(() => this.env.random() - 0.5);
     for (let i = 0; i < shuffled.length; i += 2) {
       const a = shuffled[i];
       const b = shuffled[i + 1];
@@ -103,9 +107,9 @@ export class PongRound {
         powerUntilR: 0,
         powerups: [],
         lastHitter: null,
-        nextPowerAt: Date.now() + 3000, // first pickup a few seconds in
+        nextPowerAt: this.env.now() + 3000, // first pickup a few seconds in
       };
-      this.serve(m, Math.random() < 0.5 ? "left" : "right");
+      this.serve(m, this.env.random() < 0.5 ? "left" : "right");
       this.matches.push(m);
       this.index.set(a.id, { match: m, side: "left" });
       if (b) this.index.set(b.id, { match: m, side: "right" });
@@ -118,7 +122,7 @@ export class PongRound {
     m.ballY = 0.5;
     m.speed = BASE_SPEED;
     const dir = toward === "right" ? 1 : -1;
-    const angle = (Math.random() - 0.5) * 0.6; // small vertical spread
+    const angle = (this.env.random() - 0.5) * 0.6; // small vertical spread
     m.vx = dir * BASE_SPEED * Math.cos(angle);
     m.vy = BASE_SPEED * Math.sin(angle);
     m.serveTimer = SERVE_DELAY;
@@ -148,7 +152,7 @@ export class PongRound {
 
   /** Advance every match by `dt` seconds. */
   tick(dt: number) {
-    const now = Date.now();
+    const now = this.env.now();
     for (const m of this.matches) {
       if (m.over) continue;
       this.agePowers(m, now);
@@ -239,9 +243,9 @@ export class PongRound {
   /** A fresh pickup somewhere in the central court. */
   private spawnPickup(): PongPowerup {
     return {
-      x: 0.28 + Math.random() * 0.44,
-      y: 0.16 + Math.random() * 0.68,
-      kind: Math.random() < 0.5 ? "fast" : "shrink",
+      x: 0.28 + this.env.random() * 0.44,
+      y: 0.16 + this.env.random() * 0.68,
+      kind: this.env.random() < 0.5 ? "fast" : "shrink",
     };
   }
 

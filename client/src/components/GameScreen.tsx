@@ -4,20 +4,7 @@ import { sfx } from "../audio/audio.js";
 import { AudioVisualizer } from "../audio/AudioVisualizer.js";
 import type { SeatState } from "../state/types.js";
 import { PhaserBoard } from "../game/PhaserBoard.js";
-import { WordlePanel } from "./WordlePanel.js";
-import { CodenamesPanel } from "./CodenamesPanel.js";
-import { SkribblPanel } from "./SkribblPanel.js";
-import { SkribblTeamsPanel } from "./SkribblTeamsPanel.js";
-import { FindWordPanel } from "./FindWordPanel.js";
-import { TetrisPanel } from "./TetrisPanel.js";
-import { PuzzlePanel } from "./PuzzlePanel.js";
-import { GuessCountryPanel } from "./GuessCountryPanel.js";
-import { TravlePanel } from "./TravlePanel.js";
-import { PongPanel } from "./PongPanel.js";
-import { HidePanel } from "./HidePanel.js";
-import { BattlePanel } from "./BattlePanel.js";
-import { RunnerPanel } from "./RunnerPanel.js";
-import { SterbegeldPanel } from "./SterbegeldPanel.js";
+import { CLIENT_GAMES } from "../games/registry.js";
 import { TeamDraftScreen } from "./TeamDraftScreen.js";
 import { ReadyPanel } from "./ReadyPanel.js";
 import { ExplanationScreen } from "./ExplanationScreen.js";
@@ -51,103 +38,19 @@ export function GameScreen({ seat }: { seat: SeatState }) {
   }
 
   // A running minigame takes over the full stage.
-  if (playing && seat.minigame === "wordle") {
+  const game = playing ? seat.game : null;
+  const mod = game ? CLIENT_GAMES[game.type] : null;
+  if (game && mod && (mod.alwaysRender || game.state)) {
+    const panel = <mod.Panel key={mod.keyBySeat ? seat.id : undefined} seat={seat} />;
     return (
       <div className="game-wrap">
-        <div className="center-stage" style={{ alignItems: "flex-start" }}>
-          <WordlePanel seat={seat} />
-        </div>
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "codenames") {
-    return (
-      <div className="game-wrap">
-        <CodenamesPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "skribbl") {
-    return (
-      <div className="game-wrap">
-        <SkribblPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "skribblteams") {
-    return (
-      <div className="game-wrap">
-        <SkribblTeamsPanel key={seat.id} seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "findword") {
-    return (
-      <div className="game-wrap">
-        <FindWordPanel key={seat.id} seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "tetris") {
-    return (
-      <div className="game-wrap">
-        <TetrisPanel key={seat.id} seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "guesscountry" && seat.guessCountry) {
-    return (
-      <div className="game-wrap">
-        <GuessCountryPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "travle" && seat.travle) {
-    return (
-      <div className="game-wrap">
-        <TravlePanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "pong" && seat.pong) {
-    return (
-      <div className="game-wrap">
-        <PongPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "verstecken" && seat.hide) {
-    return (
-      <div className="game-wrap">
-        <HidePanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "battle" && seat.battle) {
-    return (
-      <div className="game-wrap">
-        <BattlePanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "runner" && seat.runner) {
-    return (
-      <div className="game-wrap">
-        <RunnerPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.minigame === "sterbegeld" && seat.sterbegeld) {
-    return (
-      <div className="game-wrap">
-        <SterbegeldPanel seat={seat} />
-      </div>
-    );
-  }
-  if (playing && seat.puzzle) {
-    return (
-      <div className="game-wrap">
-        <PuzzlePanel seat={seat} />
+        {mod.centered ? (
+          <div className="center-stage" style={{ alignItems: "flex-start" }}>
+            {panel}
+          </div>
+        ) : (
+          panel
+        )}
       </div>
     );
   }

@@ -6,6 +6,7 @@ import {
   type GeoCountry,
   type GuessCountryGuess,
 } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 interface PlayerState {
   tries: number;
@@ -22,14 +23,19 @@ const MAX_KM = 20000; // ~half the earth's circumference
  * time), then by tries.
  */
 export class GuessCountryRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private players = new Map<string, PlayerState>();
   private nextOrder = 0;
-  private readonly startTime = Date.now();
+  private readonly startTime: number;
 
   constructor(
     playerIds: string[],
     readonly answer: GeoCountry,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
+    this.startTime = this.env.now();
     for (const id of playerIds) {
       this.players.set(id, { tries: 0, solved: false, finishOrder: null, finishedAt: null });
     }
@@ -54,7 +60,7 @@ export class GuessCountryRound {
     if (correct) {
       st.solved = true;
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
     }
     return { guess: { code, name: guessed.name, correct, distanceKm, bearingDeg, proximity } };
   }
@@ -63,7 +69,7 @@ export class GuessCountryRound {
     const st = this.players.get(id);
     if (st && st.finishOrder === null) {
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
     }
   }
 
@@ -71,7 +77,7 @@ export class GuessCountryRound {
     for (const st of this.players.values()) {
       if (st.finishOrder === null) {
         st.finishOrder = this.nextOrder++;
-        st.finishedAt = Date.now();
+        st.finishedAt = this.env.now();
       }
     }
   }
@@ -82,7 +88,7 @@ export class GuessCountryRound {
   }
 
   private timeMs(st: PlayerState): number {
-    return (st.finishedAt ?? Date.now()) - this.startTime;
+    return (st.finishedAt ?? this.env.now()) - this.startTime;
   }
 
   ranking(): string[] {

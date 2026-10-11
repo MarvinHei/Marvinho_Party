@@ -14,6 +14,8 @@ const makePlayerId = customAlphabet(
 
 export class LobbyManager {
   private lobbies = new Map<string, Lobby>();
+  /** Set on shutdown: no new lobbies or joins. */
+  private closed = false;
 
   constructor(private io: IO) {}
 
@@ -21,6 +23,7 @@ export class LobbyManager {
     lobby: Lobby;
     playerId: string;
   } {
+    this.assertOpen();
     let code = makeCode();
     while (this.lobbies.has(code)) code = makeCode();
 
@@ -44,6 +47,7 @@ export class LobbyManager {
     code: string,
     player: { socketId: string; nickname: string; appearance?: Appearance },
   ): { lobby: Lobby; playerId: string } {
+    this.assertOpen();
     const lobby = this.getLobby(code);
     if (!lobby) throw new Error("Lobby not found.");
     const playerId = makePlayerId();
@@ -54,6 +58,17 @@ export class LobbyManager {
       appearance: player.appearance,
     });
     return { lobby, playerId };
+  }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error("The server is restarting — try again in a moment.");
+  }
+
+  /** Stop accepting lobbies and tear down every running one (timers included). */
+  close(): void {
+    this.closed = true;
+    for (const lobby of this.lobbies.values()) lobby.dispose();
+    this.lobbies.clear();
   }
 
   get size(): number {

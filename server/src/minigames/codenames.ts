@@ -7,6 +7,7 @@ import {
   type CodenamesView,
 } from "@marvinho/shared";
 import { pickWords } from "./codenamesWords.js";
+import { realEnv, shuffled, type GameEnv } from "./env.js";
 
 interface TeamState {
   spymasterId: string | null;
@@ -18,19 +19,13 @@ function other(team: CodenamesTeam): CodenamesTeam {
   return team === "a" ? "b" : "a";
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
 /**
  * One turn-based Codenames round for two teams. Only spymasters ever receive
  * the key; everyone else sees the board and revealed cards.
  */
 export class CodenamesRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly words: string[];
   readonly key: CardColor[];
   readonly startingTeam: CodenamesTeam;
@@ -45,11 +40,13 @@ export class CodenamesRound {
   constructor(
     teams: Record<CodenamesTeam, { spymasterId: string; memberIds: string[] }>,
     boardSize: CodenamesSize = 5,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
     const dist = codenamesDistribution(boardSize);
     const grid = dist.grid;
-    this.words = pickWords(grid);
-    this.startingTeam = Math.random() < 0.5 ? "a" : "b";
+    this.words = pickWords(grid, env.random);
+    this.startingTeam = this.env.random() < 0.5 ? "a" : "b";
     const secondTeam = other(this.startingTeam);
 
     const colors: CardColor[] = [];
@@ -57,7 +54,7 @@ export class CodenamesRound {
     for (let i = 0; i < dist.otherTeamCards; i++) colors.push(secondTeam);
     for (let i = 0; i < dist.neutralCards; i++) colors.push("neutral");
     for (let i = 0; i < dist.assassinCards; i++) colors.push("assassin");
-    this.key = shuffle(colors);
+    this.key = shuffled(env.random, colors);
     this.revealed = new Array(grid).fill(null);
 
     this.teams = {

@@ -6,6 +6,7 @@ import {
   type SkribblTeamsView,
 } from "@marvinho/shared";
 import { pickWord } from "./skribblWords.js";
+import { realEnv, type GameEnv } from "./env.js";
 
 export interface TeamSpec {
   id: string;
@@ -71,6 +72,8 @@ interface TeamState extends TeamSpec {
  * (then by total guess time).
  */
 export class SkribblTeamsGame {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private teams: TeamState[];
   private info = new Map<string, PlayerInfo>();
   private teamOfPlayer = new Map<string, TeamState>();
@@ -90,7 +93,9 @@ export class SkribblTeamsGame {
     teams: TeamSpec[],
     players: PlayerInfo[],
     roundSeconds: number = SKRIBBL_TEAMS_CONFIG.roundSeconds,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
     this.roundSeconds = roundSeconds;
     this.teamSize = teams[0]?.memberIds.length ?? 0;
     this.teams = teams.map((t) => ({
@@ -139,8 +144,8 @@ export class SkribblTeamsGame {
 
   beginRound(): void {
     this.roundIndex++;
-    this.word = pickWord();
-    this.roundStart = Date.now();
+    this.word = pickWord(this.env.random);
+    this.roundStart = this.env.now();
     this.endsAt = this.roundStart + this.roundSeconds * 1000;
     this.phase = "drawing";
     this.reveal = null;
@@ -172,7 +177,7 @@ export class SkribblTeamsGame {
       }
     }
     if (hidden.length <= 1) return false;
-    this.revealedLetters.add(hidden[Math.floor(Math.random() * hidden.length)]);
+    this.revealedLetters.add(hidden[Math.floor(this.env.random() * hidden.length)]);
     return true;
   }
 
@@ -196,7 +201,7 @@ export class SkribblTeamsGame {
     if (!text) return { correct: false, roundComplete: false, close: false };
 
     if (normalize(text) === normalize(this.word)) {
-      const now = Date.now();
+      const now = this.env.now();
       team.correct.add(playerId);
       if (!team.solvedThisRound) {
         team.solvedThisRound = true;

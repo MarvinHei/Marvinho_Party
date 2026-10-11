@@ -1,3 +1,4 @@
+import type { Rng } from "./env.js";
 import type {
   PuzzleSpec,
   PuzzleGame,
@@ -12,6 +13,9 @@ import type {
 // exists — matching the shared rule validators.
 // ============================================================================
 
+/** The RNG for the generation in progress (set by generatePuzzle). */
+let rand: Rng = Math.random;
+
 function range(a: number, b: number): number[] {
   const out: number[] = [];
   for (let i = a; i < b; i++) out.push(i);
@@ -19,7 +23,7 @@ function range(a: number, b: number): number[] {
 }
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -53,7 +57,7 @@ function snakePath(N: number): number[] {
 function hamiltonianPath(N: number): number[] {
   const total = N * N;
   for (let restart = 0; restart < 300; restart++) {
-    const start = Math.floor(Math.random() * total);
+    const start = Math.floor(rand() * total);
     const visited = new Array(total).fill(false);
     const path = [start];
     visited[start] = true;
@@ -70,7 +74,7 @@ function hamiltonianPath(N: number): number[] {
         if (deg < bestDeg) { bestDeg = deg; best = [n]; }
         else if (deg === bestDeg) best.push(n);
       }
-      const next = best[Math.floor(Math.random() * best.length)];
+      const next = best[Math.floor(rand() * best.length)];
       visited[next] = true;
       path.push(next);
     }
@@ -439,11 +443,21 @@ export function genTango(difficulty: PuzzleDifficulty = "medium"): GeneratedPuzz
   return { spec: { game: "tango", tango: { size: N, givens, constraints } }, solution: sol };
 }
 
-export function generatePuzzle(game: PuzzleGame, difficulty: PuzzleDifficulty = "medium"): GeneratedPuzzle {
-  switch (game) {
-    case "zip": return genZip(difficulty);
-    case "queens": return genQueens(difficulty);
-    case "sudoku": return genSudoku(difficulty);
-    case "tango": return genTango(difficulty);
+export function generatePuzzle(
+  game: PuzzleGame,
+  difficulty: PuzzleDifficulty = "medium",
+  rng: Rng = Math.random,
+): GeneratedPuzzle {
+  const prev = rand;
+  rand = rng;
+  try {
+    switch (game) {
+      case "zip": return genZip(difficulty);
+      case "queens": return genQueens(difficulty);
+      case "sudoku": return genSudoku(difficulty);
+      case "tango": return genTango(difficulty);
+    }
+  } finally {
+    rand = prev;
   }
 }

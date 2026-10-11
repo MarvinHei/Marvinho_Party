@@ -1,3 +1,4 @@
+import { randInt, type Rng } from "./env.js";
 // Einzelwort-Karten für Codenames: konkrete, gut ratbare deutsche Substantive.
 export const CODENAMES_WORDS: string[] = [
   "ADLER", "AFRIKA", "AGENT", "AMPEL", "ANGEL", "ANKER", "APFEL", "ARM",
@@ -45,11 +46,11 @@ export const CODENAMES_WORDS: string[] = [
 ];
 
 /** Returns `count` distinct random words (uppercase). */
-export function pickWords(count: number): string[] {
+export function pickWords(count: number, rng: Rng = Math.random): string[] {
   const pool = [...CODENAMES_WORDS];
   const out: string[] = [];
   for (let i = 0; i < count && pool.length > 0; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
+    const idx = randInt(rng, pool.length);
     out.push(pool.splice(idx, 1)[0]);
   }
   return out;

@@ -1,5 +1,6 @@
 import type { PuzzleSpec } from "@marvinho/shared";
 import { validatePuzzle } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 interface PlayerState {
   solved: boolean;
@@ -12,14 +13,19 @@ interface PlayerState {
  * solution; ranking is solvers-first, then by solve time.
  */
 export class PuzzleRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private players = new Map<string, PlayerState>();
   private nextOrder = 0;
-  private readonly startTime = Date.now();
+  private readonly startTime: number;
 
   constructor(
     playerIds: string[],
     private readonly spec: PuzzleSpec,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
+    this.startTime = this.env.now();
     for (const id of playerIds) {
       this.players.set(id, { solved: false, finishOrder: null, finishedAt: null });
     }
@@ -33,7 +39,7 @@ export class PuzzleRound {
     if (validatePuzzle(this.spec, solution)) {
       st.solved = true;
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
       return { solved: true };
     }
     return { solved: false };
@@ -43,7 +49,7 @@ export class PuzzleRound {
     const st = this.players.get(id);
     if (st && st.finishOrder === null) {
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
     }
   }
 
@@ -51,7 +57,7 @@ export class PuzzleRound {
     for (const st of this.players.values()) {
       if (st.finishOrder === null) {
         st.finishOrder = this.nextOrder++;
-        st.finishedAt = Date.now();
+        st.finishedAt = this.env.now();
       }
     }
   }
@@ -62,7 +68,7 @@ export class PuzzleRound {
   }
 
   private timeMs(st: PlayerState): number {
-    return (st.finishedAt ?? Date.now()) - this.startTime;
+    return (st.finishedAt ?? this.env.now()) - this.startTime;
   }
 
   ranking(): string[] {

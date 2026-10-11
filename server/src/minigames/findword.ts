@@ -5,6 +5,7 @@ import {
   type FindWordView,
 } from "@marvinho/shared";
 import type { TeamSpec } from "./skribblTeams.js";
+import { realEnv, type GameEnv } from "./env.js";
 
 interface PlayerInfo {
   id: string;
@@ -49,10 +50,12 @@ interface TeamState extends TeamSpec {
  * seeing the history. Fewest attempts wins (ties broken by total time).
  */
 export class FindWordGame {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private teams: TeamState[];
   private info = new Map<string, PlayerInfo>();
   private teamOfPlayer = new Map<string, TeamState>();
-  private gameStart = Date.now();
+  private gameStart: number;
 
   private readonly roundSeconds: number;
 
@@ -60,9 +63,12 @@ export class FindWordGame {
     teams: TeamSpec[],
     players: PlayerInfo[],
     roundSeconds: number = FINDWORD_CONFIG.roundSeconds,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
+    this.gameStart = this.env.now();
     this.roundSeconds = roundSeconds;
-    const now = Date.now();
+    const now = this.env.now();
     this.teams = teams.map((t) => ({
       ...t,
       roundIndex: 0,
@@ -138,7 +144,7 @@ export class FindWordGame {
       team.done = true;
       team.converged = true;
       team.convergedWord = entries[0].word;
-      team.finishTimeMs = Date.now() - this.gameStart;
+      team.finishTimeMs = this.env.now() - this.gameStart;
       return;
     }
 
@@ -146,10 +152,10 @@ export class FindWordGame {
     if (team.roundIndex >= FINDWORD_CONFIG.maxRounds) {
       team.done = true;
       team.converged = false;
-      team.finishTimeMs = Date.now() - this.gameStart;
+      team.finishTimeMs = this.env.now() - this.gameStart;
       return;
     }
-    team.roundStart = Date.now();
+    team.roundStart = this.env.now();
     team.endsAt = team.roundStart + this.roundSeconds * 1000;
   }
 

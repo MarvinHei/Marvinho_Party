@@ -4,6 +4,7 @@ import type {
   SterbegeldPhase,
   SterbegeldStatePayload,
 } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 // ===========================================================================
 // Sterbegeld — a two-act split-screen game. Everyone plays both acts; the
@@ -76,6 +77,8 @@ export interface SterbegeldStats {
 }
 
 export class SterbegeldRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private players = new Map<string, SP>();
   private order: string[];
   private phase: SterbegeldPhase = "dela";
@@ -85,11 +88,12 @@ export class SterbegeldRound {
   private nextWaveAt = 0;
   private lastGapStart = Math.floor((COLS - 2) / 2);
 
-  constructor(players: SterbegeldPlayer[]) {
+  constructor(players: SterbegeldPlayer[], env: GameEnv = realEnv) {
+    this.env = env;
     this.order = players.map((p) => p.id);
     for (const p of players) {
       // A small per-player wobble on the car so the timing isn't memorised.
-      const wobble = 0.9 + Math.random() * 0.2;
+      const wobble = 0.9 + this.env.random() * 0.2;
       this.players.set(p.id, {
         id: p.id,
         name: p.nickname,
@@ -123,7 +127,7 @@ export class SterbegeldRound {
     const p = this.players.get(id);
     if (!p || p.signed || p.delaDone) return;
     p.signed = true;
-    p.signAt = Date.now();
+    p.signAt = this.env.now();
   }
 
   /** Wartezeit: set held horizontal direction. */
@@ -141,7 +145,7 @@ export class SterbegeldRound {
   }
 
   private tickDela(dt: number): void {
-    const now = Date.now();
+    const now = this.env.now();
     for (const p of this.players.values()) {
       if (p.delaDone) continue;
       p.carVel += p.carAccel * dt;
@@ -164,7 +168,7 @@ export class SterbegeldRound {
 
   private startWait(): void {
     this.phase = "wartezeit";
-    this.waitStart = Date.now();
+    this.waitStart = this.env.now();
     this.nextWaveAt = this.waitStart + 700; // brief beat before the first bar
     this.lastGapStart = Math.floor((COLS - 3) / 2);
     for (const p of this.players.values()) {
@@ -176,7 +180,7 @@ export class SterbegeldRound {
   }
 
   private elapsedWait(): number {
-    return (Date.now() - this.waitStart) / 1000;
+    return (this.env.now() - this.waitStart) / 1000;
   }
 
   private fallSpeed(e: number): number {
@@ -195,13 +199,13 @@ export class SterbegeldRound {
     const gapCols = this.gapCols(e);
     const lo = Math.max(0, this.lastGapStart - GAP_SHIFT);
     const hi = Math.min(COLS - gapCols, this.lastGapStart + GAP_SHIFT);
-    const gapStart = lo + Math.floor(Math.random() * (hi - lo + 1));
+    const gapStart = lo + Math.floor(this.env.random() * (hi - lo + 1));
     this.lastGapStart = gapStart;
     this.waves.push({ gapStart, gapCols, y: -BLOCK_H });
   }
 
   private tickWait(dt: number): void {
-    const now = Date.now();
+    const now = this.env.now();
     const e = this.elapsedWait();
     const fall = this.fallSpeed(e);
 
@@ -250,7 +254,7 @@ export class SterbegeldRound {
     if (!p.delaDone) {
       p.delaDone = true;
       p.delaScore = p.signed
-        ? Math.max(0, Math.round(DELA_MAX - (DELA_DECAY * (Date.now() - p.signAt)) / 1000))
+        ? Math.max(0, Math.round(DELA_MAX - (DELA_DECAY * (this.env.now() - p.signAt)) / 1000))
         : 0;
     }
     if (p.waitAlive) {

@@ -28,9 +28,10 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 });
 
 const manager = new LobbyManager(io);
+let shuttingDown = false;
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, lobbies: manager.size });
+  res.status(shuttingDown ? 503 : 200).json({ ok: !shuttingDown, lobbies: manager.size });
 });
 
 // In production the built client is served from the same origin.
@@ -203,188 +204,26 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("wordle:guess", ({ guess }, ack) => {
+  // Every minigame input arrives on one of these two channels and is routed by
+  // the lobby to the running game (which validates the payload).
+  socket.on("game:send", (msg) => {
+    if (!session) return;
+    try {
+      manager.getLobby(session.lobbyId)?.handleInput(session.playerId, msg);
+    } catch {
+      // Fire-and-forget: stale or invalid inputs are dropped silently.
+    }
+  });
+
+  socket.on("game:request", (msg, ack) => {
     try {
       if (!session) throw new Error("Not in a lobby.");
       const lobby = manager.getLobby(session.lobbyId);
       if (!lobby) throw new Error("Lobby not found.");
-      const outcome = lobby.handleWordleGuess(session.playerId, guess);
-      ack({ ok: true, data: outcome });
+      ack({ ok: true, data: lobby.handleInput(session.playerId, msg) });
     } catch (err) {
       fail(ack, err);
     }
-  });
-
-  socket.on("codenames:clue", ({ word, count }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      lobby.handleCodenamesClue(session.playerId, word, count);
-      ack({ ok: true, data: null });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("codenames:guess", ({ index }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      lobby.handleCodenamesGuess(session.playerId, index);
-      ack({ ok: true, data: null });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("codenames:endTurn", (ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      lobby.handleCodenamesEndTurn(session.playerId);
-      ack({ ok: true, data: null });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("skribbl:draw", ({ seg }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSkribblDraw(session.playerId, seg);
-  });
-
-  socket.on("skribbl:clear", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSkribblClear(session.playerId);
-  });
-
-  socket.on("skribbl:guess", ({ text }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handleSkribblGuess(session.playerId, text);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("skribblteams:draw", ({ seg }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSkribblTeamsDraw(session.playerId, seg);
-  });
-
-  socket.on("skribblteams:clear", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSkribblTeamsClear(session.playerId);
-  });
-
-  socket.on("skribblteams:guess", ({ text }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handleSkribblTeamsGuess(session.playerId, text);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("findword:submit", ({ word }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handleFindwordSubmit(session.playerId, word);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("tetris:board", ({ cells, lines }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleTetrisBoard(session.playerId, cells, lines);
-  });
-
-  socket.on("tetris:lines", ({ lines }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleTetrisLines(session.playerId, lines);
-  });
-
-  socket.on("tetris:target", ({ targetId }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleTetrisTarget(session.playerId, targetId);
-  });
-
-  socket.on("tetris:dead", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleTetrisDead(session.playerId);
-  });
-
-  socket.on("pong:move", ({ y }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handlePongMove(session.playerId, y);
-  });
-
-  socket.on("hide:move", ({ dx, dy }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleHideMove(session.playerId, dx, dy);
-  });
-
-  socket.on("hide:stab", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleHideStab(session.playerId);
-  });
-
-  socket.on("hide:teleport", ({ x, y }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleHideTeleport(session.playerId, x, y);
-  });
-
-  socket.on("hide:aim", ({ angle }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleHideAim(session.playerId, angle);
-  });
-
-  socket.on("battle:move", ({ dx, dy }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleBattleMove(session.playerId, dx, dy);
-  });
-
-  socket.on("battle:shoot", ({ angle }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleBattleShoot(session.playerId, angle);
-  });
-
-  socket.on("runner:move", ({ dir, duck }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleRunnerMove(session.playerId, dir, duck);
-  });
-
-  socket.on("runner:jump", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleRunnerJump(session.playerId);
-  });
-
-  socket.on("runner:shock", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleRunnerShock(session.playerId);
-  });
-
-  socket.on("sterbegeld:sign", () => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSterbegeldSign(session.playerId);
-  });
-
-  socket.on("sterbegeld:move", ({ dir }) => {
-    if (!session) return;
-    manager.getLobby(session.lobbyId)?.handleSterbegeldMove(session.playerId, dir);
   });
 
   socket.on("spectate:push", ({ data }) => {
@@ -410,42 +249,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("puzzle:submit", ({ solution }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handlePuzzleSubmit(session.playerId, solution);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("guesscountry:guess", ({ name }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handleGuessCountryGuess(session.playerId, name);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
-  socket.on("travle:guess", ({ name }, ack) => {
-    try {
-      if (!session) throw new Error("Not in a lobby.");
-      const lobby = manager.getLobby(session.lobbyId);
-      if (!lobby) throw new Error("Lobby not found.");
-      const res = lobby.handleTravleGuess(session.playerId, name);
-      ack({ ok: true, data: res });
-    } catch (err) {
-      fail(ack, err);
-    }
-  });
-
   socket.on("lobby:leave", () => {
     if (session) {
       // Intentional leave: drop the seat immediately (no grace/reconnect).
@@ -462,6 +265,32 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+/** Grace period for clients to receive the restart notice before sockets close. */
+const SHUTDOWN_NOTICE_MS = 1500;
+/** Hard stop if connections refuse to close. */
+const SHUTDOWN_TIMEOUT_MS = 8000;
+
+/**
+ * Deploys and restarts send SIGTERM. Lobbies live in memory, so tell every
+ * client the match is ending (they return to the home screen instead of hanging
+ * on a dead socket), stop the game timers, then close cleanly.
+ */
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received — shutting down (${manager.size} lobbies)`);
+  io.emit("server:restarting", {
+    message: "The server restarted for an update, so the match ended. Start a new lobby to play again.",
+  });
+  manager.close();
+  setTimeout(() => {
+    io.close(() => process.exit(0));
+  }, SHUTDOWN_NOTICE_MS);
+  setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 httpServer.listen(PORT, () => {
   console.log(`🎉 Marvinho Party server listening on :${PORT} (prod=${IS_PROD})`);

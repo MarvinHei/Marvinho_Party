@@ -8,6 +8,7 @@ import {
   hasLineOfSight,
   isWall,
 } from "./arena.js";
+import { realEnv, type GameEnv } from "./env.js";
 
 const COLS = 34;
 const ROWS = 20;
@@ -53,6 +54,8 @@ export interface HideStats {
 }
 
 export class HideRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly arena: Arena;
   readonly releaseAt: number;
   readonly endsAt: number;
@@ -62,15 +65,16 @@ export class HideRound {
   private lastPingAt = 0;
   private pingPositions: { x: number; y: number }[] = [];
 
-  constructor(players: HidePlayer[], holdMs: number, roundMs: number) {
-    this.arena = generateArena(COLS, ROWS);
-    const now = Date.now();
+  constructor(players: HidePlayer[], holdMs: number, roundMs: number, env: GameEnv = realEnv) {
+    this.env = env;
+    this.arena = generateArena(COLS, ROWS, env.random);
+    const now = this.env.now();
     this.releaseAt = now + holdMs;
     this.endsAt = now + roundMs;
     const ids = players.map((p) => p.id);
-    this.seekerId = ids[Math.floor(Math.random() * ids.length)];
+    this.seekerId = ids[Math.floor(this.env.random() * ids.length)];
     for (const p of players) {
-      const spawn = randomSpawn(this.arena, RADIUS);
+      const spawn = randomSpawn(this.arena, RADIUS, env.random);
       this.players.set(p.id, {
         id: p.id,
         name: p.nickname,
@@ -100,7 +104,7 @@ export class HideRound {
   }
 
   private released(): boolean {
-    return Date.now() >= this.releaseAt;
+    return this.env.now() >= this.releaseAt;
   }
 
   setMove(id: string, dx: number, dy: number): void {
@@ -126,7 +130,7 @@ export class HideRound {
     }
     if (best) {
       best.caught = true;
-      best.survivedMs = Date.now() - this.releaseAt;
+      best.survivedMs = this.env.now() - this.releaseAt;
       this.catches++;
     }
   }
@@ -142,7 +146,7 @@ export class HideRound {
     const p = this.players.get(id);
     if (!p || p.caught) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    const now = Date.now();
+    const now = this.env.now();
     if (now - p.lastTeleport < TELEPORT_CD) return;
     // The seeker can't blink before it's loosed onto the map.
     if (p.role === "seeker" && !this.released()) return;
@@ -157,7 +161,7 @@ export class HideRound {
   private teleportCd(id: string): number {
     const p = this.players.get(id);
     if (!p) return 0;
-    return Math.max(0, TELEPORT_CD - (Date.now() - p.lastTeleport));
+    return Math.max(0, TELEPORT_CD - (this.env.now() - p.lastTeleport));
   }
 
   tick(dt: number): void {
@@ -171,7 +175,7 @@ export class HideRound {
       p.y = next.y;
     }
     // Every few seconds, snapshot the hiders' positions as a radar ping.
-    const now = Date.now();
+    const now = this.env.now();
     if (released && now - this.lastPingAt >= PING_INTERVAL) {
       this.lastPingAt = now;
       this.pingPositions = [];
@@ -221,12 +225,12 @@ export class HideRound {
     }
     // The seeker sees a radar ping for a short window after each snapshot.
     const pings =
-      isSeeker && Date.now() - this.lastPingAt < PING_SHOW_MS ? this.pingPositions : [];
+      isSeeker && this.env.now() - this.lastPingAt < PING_SHOW_MS ? this.pingPositions : [];
     return {
       players: dots,
       released,
       aliveHiders: this.aliveHiders(),
-      msLeft: Math.max(0, this.endsAt - Date.now()),
+      msLeft: Math.max(0, this.endsAt - this.env.now()),
       meCaught: me?.caught ?? false,
       pings,
       teleportCd: this.teleportCd(id),
@@ -243,7 +247,7 @@ export class HideRound {
   isComplete(): boolean {
     // Ends when the seeker catches everyone, or when time runs out (any hider
     // still alive at the buzzer means the hiders win).
-    return this.aliveHiders() === 0 || Date.now() >= this.endsAt;
+    return this.aliveHiders() === 0 || this.env.now() >= this.endsAt;
   }
 
   statsFor(id: string): HideStats {

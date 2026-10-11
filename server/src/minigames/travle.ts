@@ -3,6 +3,7 @@ import {
   countryByCode,
   matchCountryCode,
 } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 interface PlayerState {
   named: Set<string>;
@@ -17,15 +18,20 @@ interface PlayerState {
  * is connectors-first (fewest named, then time), then by how many they named.
  */
 export class TravleRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private players = new Map<string, PlayerState>();
   private nextOrder = 0;
-  private readonly startTime = Date.now();
+  private readonly startTime: number;
 
   constructor(
     playerIds: string[],
     readonly startCode: string,
     readonly endCode: string,
+    env: GameEnv = realEnv,
   ) {
+    this.env = env;
+    this.startTime = this.env.now();
     for (const id of playerIds) {
       this.players.set(id, { named: new Set(), connected: false, finishOrder: null, finishedAt: null });
     }
@@ -46,7 +52,7 @@ export class TravleRound {
     if (connected && st.finishOrder === null) {
       st.connected = true;
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
     }
     return { code, name: countryByCode(code)?.name ?? code, connected };
   }
@@ -55,7 +61,7 @@ export class TravleRound {
     const st = this.players.get(id);
     if (st && st.finishOrder === null) {
       st.finishOrder = this.nextOrder++;
-      st.finishedAt = Date.now();
+      st.finishedAt = this.env.now();
     }
   }
 
@@ -63,7 +69,7 @@ export class TravleRound {
     for (const st of this.players.values()) {
       if (st.finishOrder === null) {
         st.finishOrder = this.nextOrder++;
-        st.finishedAt = Date.now();
+        st.finishedAt = this.env.now();
       }
     }
   }
@@ -74,7 +80,7 @@ export class TravleRound {
   }
 
   private timeMs(st: PlayerState): number {
-    return (st.finishedAt ?? Date.now()) - this.startTime;
+    return (st.finishedAt ?? this.env.now()) - this.startTime;
   }
 
   ranking(): string[] {

@@ -5,20 +5,12 @@ import {
   type SkribblView,
 } from "@marvinho/shared";
 import { pickWord } from "./skribblWords.js";
+import { realEnv, shuffled, type GameEnv } from "./env.js";
 
 interface PlayerInfo {
   id: string;
   nickname: string;
   color: string;
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
 }
 
 function normalize(s: string): string {
@@ -59,6 +51,8 @@ function levenshtein(a: string, b: string): number {
  * scores based on how many players guessed the word.
  */
 export class SkribblGame {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   private order: string[];
   private info = new Map<string, PlayerInfo>();
   private scores = new Map<string, number>();
@@ -77,9 +71,10 @@ export class SkribblGame {
 
   private readonly roundSeconds: number;
 
-  constructor(players: PlayerInfo[], roundSeconds: number = SKRIBBL_CONFIG.roundSeconds) {
+  constructor(players: PlayerInfo[], roundSeconds: number = SKRIBBL_CONFIG.roundSeconds, env: GameEnv = realEnv) {
+    this.env = env;
     this.roundSeconds = roundSeconds;
-    this.order = shuffle(players.map((p) => p.id));
+    this.order = shuffled(env.random, players.map((p) => p.id));
     for (const p of players) {
       this.info.set(p.id, p);
       this.scores.set(p.id, 0);
@@ -116,8 +111,8 @@ export class SkribblGame {
   beginTurn(): void {
     this.turnIndex++;
     this.drawerId = this.order[this.turnIndex];
-    this.word = pickWord();
-    this.wordStart = Date.now();
+    this.word = pickWord(this.env.random);
+    this.wordStart = this.env.now();
     this.endsAt = this.wordStart + this.roundSeconds * 1000;
     this.phase = "drawing";
     this.reveal = null;
@@ -148,7 +143,7 @@ export class SkribblGame {
       }
     }
     if (hidden.length <= 1) return false; // always keep at least one hidden
-    this.revealedLetters.add(hidden[Math.floor(Math.random() * hidden.length)]);
+    this.revealedLetters.add(hidden[Math.floor(this.env.random() * hidden.length)]);
     return true;
   }
 
@@ -168,7 +163,7 @@ export class SkribblGame {
     if (!text) return { correct: false, turnComplete: false, close: false };
 
     if (normalize(text) === normalize(this.word)) {
-      const now = Date.now();
+      const now = this.env.now();
       const total = this.roundSeconds * 1000;
       const frac = Math.max(0, Math.min(1, (this.endsAt - now) / total));
       const points = Math.max(
@@ -203,7 +198,7 @@ export class SkribblGame {
    *  Returns the new deadline, or null if it wasn't shortened. */
   shrinkTurn(factor: number, minMs: number): number | null {
     if (this.phase !== "drawing") return null;
-    const now = Date.now();
+    const now = this.env.now();
     const remaining = this.endsAt - now;
     if (remaining <= 0) return null;
     const next = Math.max(minMs, Math.round(remaining * factor));

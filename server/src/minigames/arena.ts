@@ -1,13 +1,15 @@
 // Shared top-down arena for the real-time movement games (Hide & Seek, Battle
 // Royale): a tile grid of walls plus circle movement, spawns and line-of-sight.
 
+import { randInt, type Rng } from "./env.js";
+
 export interface Arena {
   cols: number;
   rows: number;
   walls: boolean[]; // row-major, true = solid
 }
 
-export function generateArena(cols: number, rows: number): Arena {
+export function generateArena(cols: number, rows: number, rng: Rng = Math.random): Arena {
   const walls = new Array(cols * rows).fill(false);
   const at = (x: number, y: number) => y * cols + x;
   // Solid border.
@@ -22,10 +24,10 @@ export function generateArena(cols: number, rows: number): Arena {
   // Scattered rectangular obstacles for cover.
   const count = Math.floor((cols * rows) / 40);
   for (let i = 0; i < count; i++) {
-    const w = 1 + Math.floor(Math.random() * 3);
-    const h = 1 + Math.floor(Math.random() * 3);
-    const x = 2 + Math.floor(Math.random() * Math.max(1, cols - 4 - w));
-    const y = 2 + Math.floor(Math.random() * Math.max(1, rows - 4 - h));
+    const w = 1 + randInt(rng, 3);
+    const h = 1 + randInt(rng, 3);
+    const x = 2 + randInt(rng, Math.max(1, cols - 4 - w));
+    const y = 2 + randInt(rng, Math.max(1, rows - 4 - h));
     for (let dy = 0; dy < h; dy++)
       for (let dx = 0; dx < w; dx++) walls[at(x + dx, y + dy)] = true;
   }
@@ -71,10 +73,10 @@ export function moveCircle(
 }
 
 /** A random open (non-wall) point, with a little padding from walls. */
-export function randomSpawn(a: Arena, r = 0.4): { x: number; y: number } {
+export function randomSpawn(a: Arena, r = 0.4, rng: Rng = Math.random): { x: number; y: number } {
   for (let i = 0; i < 400; i++) {
-    const x = 1.5 + Math.random() * (a.cols - 3);
-    const y = 1.5 + Math.random() * (a.rows - 3);
+    const x = 1.5 + rng() * (a.cols - 3);
+    const y = 1.5 + rng() * (a.rows - 3);
     if (!collides(a, x, y, r)) return { x, y };
   }
   return { x: a.cols / 2, y: a.rows / 2 };

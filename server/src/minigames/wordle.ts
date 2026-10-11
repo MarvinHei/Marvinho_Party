@@ -1,5 +1,6 @@
 import type { LetterState, WordleGuessResult } from "@marvinho/shared";
 import { isValidWord, randomWord } from "./words.js";
+import { realEnv, type GameEnv } from "./env.js";
 
 /**
  * Pure Wordle scoring. Handles duplicate letters the standard way:
@@ -47,14 +48,18 @@ export interface WordlePlayerState {
  * Server-side state for one Wordle round shared by all players in a lobby.
  */
 export class WordleRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly answer: string;
   readonly maxGuesses: number;
   private players = new Map<string, WordlePlayerState>();
   private nextFinishOrder = 0;
-  private readonly startTime = Date.now();
+  private readonly startTime: number;
 
-  constructor(playerIds: string[], maxGuesses: number, answer = randomWord()) {
-    this.answer = answer;
+  constructor(playerIds: string[], maxGuesses: number, answer?: string, env: GameEnv = realEnv) {
+    this.env = env;
+    this.startTime = this.env.now();
+    this.answer = answer ?? randomWord(env.random);
     this.maxGuesses = maxGuesses;
     for (const id of playerIds) {
       this.players.set(id, {
@@ -72,7 +77,7 @@ export class WordleRound {
 
   private markFinished(state: WordlePlayerState): void {
     state.finishOrder = this.nextFinishOrder++;
-    state.finishedAt = Date.now();
+    state.finishedAt = this.env.now();
   }
 
   /**
@@ -135,7 +140,7 @@ export class WordleRound {
   }
 
   private timeMs(state: WordlePlayerState): number {
-    return (state.finishedAt ?? Date.now()) - this.startTime;
+    return (state.finishedAt ?? this.env.now()) - this.startTime;
   }
 
   /**

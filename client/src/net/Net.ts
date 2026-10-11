@@ -1,10 +1,19 @@
 import { io, type Socket } from "socket.io-client";
 import type {
   Ack,
+  Appearance,
   ClientToServerEvents,
+  GameInputMsg,
+  InputReq,
+  InputRes,
   JoinedLobby,
+  LobbySettings,
+  MinigameType,
+  RequestKind,
+  SendKind,
   ServerToClientEvents,
 } from "@marvinho/shared";
+import { applyGameEnded, applyGameEvent, applyGameTimer, startGame } from "../games/registry.js";
 import { SERVER_URL } from "./config.js";
 import { clearSession, loadSession, saveSession, type Session } from "./session.js";
 import type { SeatState } from "../state/types.js";
@@ -18,7 +27,6 @@ type SeatPatch = Partial<SeatState> | ((prev: SeatState) => Partial<SeatState>);
  */
 export class Net {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
-  private garbageSeq = 0;
   /** The seat this connection holds, for reconnect/refresh. */
   private session: Session | null = null;
   private resuming = false;
@@ -66,6 +74,7 @@ export class Net {
         error: "You were removed from the lobby by the host.",
         minigame: null,
         minigamePhase: null,
+        game: null,
       });
     });
 
@@ -75,27 +84,11 @@ export class Net {
         screen: "game",
         minigamePhase: "intermission",
         lastResult: null,
-        standings: [],
         wheel: null,
         teamDraft: null,
         teamDraftGame: null,
         countdown: null,
-        codenames: null,
-        skribbl: null,
-        skribblStrokes: [],
-        skribblTeams: null,
-        findword: null,
-        tetris: null,
-        tetrisBoards: [],
-        tetrisGarbage: [],
-        tetrisAlive: [],
-        tetrisKos: [],
-        puzzle: null,
-        puzzleStandings: [],
-        guessCountry: null,
-        geoStandings: [],
-        travle: null,
-        travleStandings: [],
+        game: null,
       });
     });
 
@@ -133,248 +126,33 @@ export class Net {
       this.patch({ screen: "game", minigamePhase: "countdown", countdown: { game, endsAt } });
     });
 
-    this.socket.on("minigame:start", ({ type, wordle }) => {
+    this.socket.on("minigame:start", ({ type }) => {
       this.patch({
         screen: "game",
         minigame: type,
         minigamePhase: "playing",
+        // A fresh slot, so the previous round's state can't flash on screen
+        // before this round's setup arrives.
+        game: startGame(type),
         lastResult: null,
         wheel: null,
         teamDraft: null,
         teamDraftGame: null,
         countdown: null,
-        codenames: null,
-        skribbl: null,
-        skribblStrokes: [],
-        skribblTeams: null,
-        findword: null,
-        tetris: null,
-        tetrisBoards: [],
-        tetrisGarbage: [],
-        tetrisAlive: [],
-        tetrisKos: [],
-        puzzle: null,
-        puzzleStandings: [],
-        // Clear the geo maps too, so the previous round's map can't flash on
-        // screen for a frame before this round's map arrives.
-        guessCountry: null,
-        geoStandings: [],
-        travle: null,
-        travleStandings: [],
-        pong: null,
-        hide: null,
-        battle: null,
-        runner: null,
-        sterbegeld: null,
         spectateTarget: null,
         spectateFrame: null,
         celebrateWinnerId: null,
         forfeited: false,
-        wordle: wordle
-          ? {
-              wordLength: wordle.wordLength,
-              maxGuesses: wordle.maxGuesses,
-              endsAt: wordle.endsAt,
-              guesses: [],
-              currentInput: "",
-              solved: false,
-              finished: false,
-              message: null,
-            }
-          : null,
       });
     });
 
+    // A timed round's deadline moved (shrunk as players solved).
     this.socket.on("minigame:timer", ({ endsAt }) => {
-      // A timed round's deadline moved (shrunk as players solved). Patch
-      // whichever countdown-based game this seat is currently in.
-      this.patch((prev) => {
-        const p: SeatPatch = {};
-        if (prev.wordle) p.wordle = { ...prev.wordle, endsAt };
-        if (prev.puzzle) p.puzzle = { ...prev.puzzle, endsAt };
-        if (prev.guessCountry) p.guessCountry = { ...prev.guessCountry, endsAt };
-        if (prev.travle) p.travle = { ...prev.travle, endsAt };
-        return p;
-      });
+      this.patch((prev) => applyGameTimer(prev, endsAt));
     });
 
-    this.socket.on("wordle:standings", (standings) => {
-      this.patch({ standings });
-    });
-
-    this.socket.on("codenames:state", (view) => {
-      this.patch({ codenames: view });
-    });
-
-    this.socket.on("skribbl:state", (view) => {
-      this.patch({ skribbl: view });
-    });
-
-    this.socket.on("skribbl:draw", ({ seg }) => {
-      this.patch((prev) => ({ skribblStrokes: [...prev.skribblStrokes, seg] }));
-    });
-
-    this.socket.on("skribbl:clear", () => {
-      this.patch({ skribblStrokes: [] });
-    });
-
-    this.socket.on("skribblteams:state", (view) => {
-      this.patch({ skribblTeams: view });
-    });
-
-    this.socket.on("skribblteams:draw", ({ seg }) => {
-      this.patch((prev) => ({ skribblStrokes: [...prev.skribblStrokes, seg] }));
-    });
-
-    this.socket.on("skribblteams:clear", () => {
-      this.patch({ skribblStrokes: [] });
-    });
-
-    this.socket.on("findword:state", (view) => {
-      this.patch({ findword: view });
-    });
-
-    this.socket.on("tetris:init", (payload) => {
-      this.patch({
-        tetris: payload,
-        tetrisBoards: [],
-        tetrisGarbage: [],
-        tetrisAlive: payload.players.map((p) => p.id),
-        tetrisKos: [],
-      });
-    });
-
-    this.socket.on("tetris:board", (snap) => {
-      this.patch((prev) => {
-        const others = prev.tetrisBoards.filter((b) => b.playerId !== snap.playerId);
-        return { tetrisBoards: [...others, snap] };
-      });
-    });
-
-    this.socket.on("tetris:garbage", ({ rows, hole }) => {
-      this.patch((prev) => ({
-        tetrisGarbage: [...prev.tetrisGarbage, { seq: this.garbageSeq++, rows, hole }],
-      }));
-    });
-
-    this.socket.on("tetris:players", ({ alive, kos }) => {
-      this.patch({ tetrisAlive: alive, tetrisKos: kos });
-    });
-
-    this.socket.on("puzzle:start", ({ game, spec, endsAt, roundSeconds }) => {
-      this.patch({
-        screen: "game",
-        minigame: game,
-        minigamePhase: "playing",
-        puzzle: { game, spec, endsAt, roundSeconds, solvedByMe: false },
-        puzzleStandings: [],
-      });
-    });
-
-    this.socket.on("puzzle:standings", (standings) => {
-      this.patch((prev) => {
-        const mine = standings.find((s) => s.playerId === prev.playerId);
-        return {
-          puzzleStandings: standings,
-          puzzle:
-            prev.puzzle && mine?.solved
-              ? { ...prev.puzzle, solvedByMe: true }
-              : prev.puzzle,
-        };
-      });
-    });
-
-    this.socket.on("guesscountry:start", ({ geometry, endsAt, roundSeconds, maxTries }) => {
-      this.patch({
-        screen: "game",
-        minigame: "guesscountry",
-        minigamePhase: "playing",
-        guessCountry: { geometry, endsAt, roundSeconds, maxTries, guesses: [], solved: false },
-        geoStandings: [],
-      });
-    });
-
-    this.socket.on("guesscountry:standings", (standings) => {
-      this.patch({ geoStandings: standings });
-    });
-
-    this.socket.on("travle:start", ({ startCode, endCode, endsAt, roundSeconds }) => {
-      this.patch({
-        screen: "game",
-        minigame: "travle",
-        minigamePhase: "playing",
-        travle: { startCode, endCode, endsAt, roundSeconds, named: [], connected: false },
-        travleStandings: [],
-      });
-    });
-
-    this.socket.on("travle:standings", (standings) => {
-      this.patch({ travleStandings: standings });
-    });
-
-    this.socket.on("pong:init", (init) => {
-      this.patch({
-        screen: "game",
-        minigame: "pong",
-        minigamePhase: "playing",
-        pong: { init, snap: null },
-      });
-    });
-
-    this.socket.on("pong:state", (snap) => {
-      this.patch((prev) => (prev.pong ? { pong: { ...prev.pong, snap } } : {}));
-    });
-
-    this.socket.on("hide:init", (init) => {
-      this.patch({
-        screen: "game",
-        minigame: "verstecken",
-        minigamePhase: "playing",
-        hide: { init, snap: null },
-      });
-    });
-
-    this.socket.on("hide:state", (snap) => {
-      this.patch((prev) => (prev.hide ? { hide: { ...prev.hide, snap } } : {}));
-    });
-
-    this.socket.on("battle:init", (init) => {
-      this.patch({
-        screen: "game",
-        minigame: "battle",
-        minigamePhase: "playing",
-        battle: { init, snap: null },
-      });
-    });
-
-    this.socket.on("battle:state", (snap) => {
-      this.patch((prev) => (prev.battle ? { battle: { ...prev.battle, snap } } : {}));
-    });
-
-    this.socket.on("runner:init", (init) => {
-      this.patch({
-        screen: "game",
-        minigame: "runner",
-        minigamePhase: "playing",
-        runner: { init, snap: null },
-      });
-    });
-
-    this.socket.on("runner:state", (snap) => {
-      this.patch((prev) => (prev.runner ? { runner: { ...prev.runner, snap } } : {}));
-    });
-
-    this.socket.on("sterbegeld:init", (init) => {
-      this.patch({
-        screen: "game",
-        minigame: "sterbegeld",
-        minigamePhase: "playing",
-        sterbegeld: { init, snap: null },
-      });
-    });
-
-    this.socket.on("sterbegeld:state", (snap) => {
-      this.patch((prev) => (prev.sterbegeld ? { sterbegeld: { ...prev.sterbegeld, snap } } : {}));
+    this.socket.on("game:event", (msg) => {
+      this.patch((prev) => applyGameEvent(prev, msg));
     });
 
     this.socket.on("spectate:frame", ({ targetId, data }) => {
@@ -390,7 +168,7 @@ export class Net {
         // Hold the board at the pre-advance positions until the host confirms.
         resultsPending: true,
         wheel: null,
-        wordle: prev.wordle ? { ...prev.wordle, finished: true } : null,
+        ...applyGameEnded(prev),
       }));
     });
 
@@ -406,6 +184,21 @@ export class Net {
 
     this.socket.on("game:finished", ({ lobby }) => {
       this.patch({ lobby, screen: "game", minigamePhase: "results", celebrateWinnerId: null });
+    });
+
+    this.socket.on("server:restarting", ({ message }) => {
+      // Our match is gone with the old server process; don't try to resume it.
+      this.session = null;
+      if (this.primary) clearSession();
+      this.patch({
+        lobby: null,
+        playerId: null,
+        screen: "home",
+        error: message,
+        minigame: null,
+        minigamePhase: null,
+        game: null,
+      });
     });
 
     this.socket.on("server:error", ({ message }) => {
@@ -443,7 +236,7 @@ export class Net {
     });
   }
 
-  create(nickname: string, appearance?: import("@marvinho/shared").Appearance): Promise<JoinedLobby> {
+  create(nickname: string, appearance?: Appearance): Promise<JoinedLobby> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:create", { nickname, appearance }, (res) =>
         this.ack(res, (d) => resolve(this.adopt(d)), reject),
@@ -451,7 +244,7 @@ export class Net {
     });
   }
 
-  join(lobbyId: string, nickname: string, appearance?: import("@marvinho/shared").Appearance): Promise<JoinedLobby> {
+  join(lobbyId: string, nickname: string, appearance?: Appearance): Promise<JoinedLobby> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:join", { lobbyId, nickname, appearance }, (res) =>
         this.ack(res, (d) => resolve(this.adopt(d)), reject),
@@ -459,7 +252,7 @@ export class Net {
     });
   }
 
-  setAppearance(appearance: import("@marvinho/shared").Appearance): Promise<null> {
+  setAppearance(appearance: Appearance): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:setAppearance", { appearance }, (res) => this.ack(res, resolve, reject));
     });
@@ -505,176 +298,34 @@ export class Net {
     });
   }
 
-  updateSettings(settings: import("@marvinho/shared").LobbySettings): Promise<null> {
+  updateSettings(settings: LobbySettings): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:updateSettings", { settings }, (res) => this.ack(res, resolve, reject));
     });
   }
 
-  debugStart(game: import("@marvinho/shared").MinigameType): Promise<null> {
+  debugStart(game: MinigameType): Promise<null> {
     return new Promise((resolve, reject) => {
       this.socket.emit("lobby:debugStart", { game }, (res) => this.ack(res, resolve, reject));
     });
   }
 
-  guess(word: string): Promise<{ result: import("@marvinho/shared").WordleGuessResult; solved: boolean }> {
+  /** A fire-and-forget input to the running minigame. */
+  send<G extends MinigameType, K extends SendKind<G>>(game: G, kind: K, payload: InputReq<G, K>): void {
+    this.socket.emit("game:send", { game, kind, payload } as GameInputMsg);
+  }
+
+  /** An input to the running minigame that the server answers. */
+  request<G extends MinigameType, K extends RequestKind<G>>(
+    game: G,
+    kind: K,
+    payload: InputReq<G, K>,
+  ): Promise<InputRes<G, K>> {
     return new Promise((resolve, reject) => {
-      this.socket.emit("wordle:guess", { guess: word }, (res) =>
-        this.ack(res, resolve, reject),
+      this.socket.emit("game:request", { game, kind, payload } as GameInputMsg, (res) =>
+        this.ack(res as Ack<InputRes<G, K>>, resolve, reject),
       );
     });
-  }
-
-  codenamesClue(word: string, count: number): Promise<null> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("codenames:clue", { word, count }, (res) =>
-        this.ack(res, resolve, reject),
-      );
-    });
-  }
-
-  codenamesGuess(index: number): Promise<null> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("codenames:guess", { index }, (res) =>
-        this.ack(res, resolve, reject),
-      );
-    });
-  }
-
-  codenamesEndTurn(): Promise<null> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("codenames:endTurn", (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  skribblDraw(seg: import("@marvinho/shared").SkribblSegment): void {
-    this.socket.emit("skribbl:draw", { seg });
-  }
-
-  skribblClear(): void {
-    this.socket.emit("skribbl:clear");
-  }
-
-  skribblGuess(text: string): Promise<{ correct: boolean; close: boolean }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("skribbl:guess", { text }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  skribblTeamsDraw(seg: import("@marvinho/shared").SkribblSegment): void {
-    this.socket.emit("skribblteams:draw", { seg });
-  }
-
-  skribblTeamsClear(): void {
-    this.socket.emit("skribblteams:clear");
-  }
-
-  skribblTeamsGuess(text: string): Promise<{ correct: boolean; close: boolean }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("skribblteams:guess", { text }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  findwordSubmit(word: string): Promise<{ accepted: boolean }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("findword:submit", { word }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  tetrisBoard(cells: string, lines: number): void {
-    this.socket.emit("tetris:board", { cells, lines });
-  }
-
-  tetrisLines(lines: number): void {
-    this.socket.emit("tetris:lines", { lines });
-  }
-
-  tetrisTarget(targetId: string): void {
-    this.socket.emit("tetris:target", { targetId });
-  }
-
-  tetrisDead(): void {
-    this.socket.emit("tetris:dead");
-  }
-
-  puzzleSubmit(solution: number[]): Promise<{ solved: boolean }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("puzzle:submit", { solution }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  guessCountry(
-    name: string,
-  ): Promise<{ guess: import("@marvinho/shared").GuessCountryGuess }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("guesscountry:guess", { name }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  travleGuess(name: string): Promise<{ code: string; name: string; connected: boolean }> {
-    return new Promise((resolve, reject) => {
-      this.socket.emit("travle:guess", { name }, (res) => this.ack(res, resolve, reject));
-    });
-  }
-
-  /** Pong — send this player's paddle center (normalized 0..1), fire-and-forget. */
-  pongMove(y: number) {
-    this.socket.emit("pong:move", { y });
-  }
-
-  /** Verstecken — send this player's movement direction. */
-  hideMove(dx: number, dy: number) {
-    this.socket.emit("hide:move", { dx, dy });
-  }
-
-  /** Verstecken — seeker stab (attempt a catch). */
-  hideStab() {
-    this.socket.emit("hide:stab");
-  }
-
-  /** Verstecken — blink to a map position (on cooldown). */
-  hideTeleport(x: number, y: number) {
-    this.socket.emit("hide:teleport", { x, y });
-  }
-
-  /** Verstecken — aim the seeker's flashlight (radians). */
-  hideAim(angle: number) {
-    this.socket.emit("hide:aim", { angle });
-  }
-
-  /** Battle Royale — send this player's movement direction. */
-  battleMove(dx: number, dy: number) {
-    this.socket.emit("battle:move", { dx, dy });
-  }
-
-  /** Battle Royale — fire a shot at the given aim angle (radians). */
-  battleShoot(angle: number) {
-    this.socket.emit("battle:shoot", { angle });
-  }
-
-  /** Runner — send held state (accelerate/brake + duck). */
-  runnerMove(dir: number, duck: boolean) {
-    this.socket.emit("runner:move", { dir, duck });
-  }
-
-  /** Runner — jump. */
-  runnerJump() {
-    this.socket.emit("runner:jump");
-  }
-
-  /** Runner — emit a shockwave. */
-  runnerShock() {
-    this.socket.emit("runner:shock");
-  }
-
-  /** Sterbegeld/DELA — sign the contract. */
-  sterbegeldSign() {
-    this.socket.emit("sterbegeld:sign");
-  }
-
-  /** Sterbegeld/Wartezeit — set held horizontal direction. */
-  sterbegeldMove(dir: number) {
-    this.socket.emit("sterbegeld:move", { dir });
   }
 
   /** Spectate — push my own in-progress snapshot for watchers. */

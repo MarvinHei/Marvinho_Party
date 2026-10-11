@@ -1,3 +1,4 @@
+import { pick, type Rng } from "./env.js";
 // AUTO-GENERATED: German, drawable Skribbl words.
 // Sourced from a large community skribbl.io German word list (aseemrb/skribbl),
 // cleaned + de-duplicated. Regenerate rather than editing by hand.
@@ -365,6 +366,6 @@ export const SKRIBBL_WORDS: string[] = [
 ];
 
 /** Pick a random German word to draw. */
-export function pickWord(): string {
-  return SKRIBBL_WORDS[Math.floor(Math.random() * SKRIBBL_WORDS.length)];
+export function pickWord(rng: Rng = Math.random): string {
+  return pick(rng, SKRIBBL_WORDS);
 }

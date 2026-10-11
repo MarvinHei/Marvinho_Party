@@ -1,4 +1,5 @@
 import type { RunnerDot, RunnerObstacle, RunnerStatePayload } from "@marvinho/shared";
+import { realEnv, type GameEnv } from "./env.js";
 
 // Horizontal auto-scroll runner. The camera scrolls right at an ever-increasing
 // speed; players must keep pace, hurdling ground obstacles (jump) and ducking
@@ -81,6 +82,8 @@ export interface RunnerStats {
 }
 
 export class RunnerRound {
+  /** Clock + RNG (injectable for deterministic tests). */
+  private readonly env: GameEnv;
   readonly endsAt: number;
   readonly viewW = VIEW_W;
   readonly viewH = VIEW_H;
@@ -93,10 +96,12 @@ export class RunnerRound {
   private scroll = SCROLL0;
   private nextObstacleX: number;
   private deaths = 0;
-  private startedAt = Date.now();
+  private startedAt: number;
 
-  constructor(players: RunnerPlayer[], roundMs: number) {
-    this.endsAt = Date.now() + roundMs;
+  constructor(players: RunnerPlayer[], roundMs: number, env: GameEnv = realEnv) {
+    this.env = env;
+    this.startedAt = this.env.now();
+    this.endsAt = this.env.now() + roundMs;
     const startX = 7;
     for (const p of players) {
       this.players.set(p.id, {
@@ -142,7 +147,7 @@ export class RunnerRound {
   shock(id: string): void {
     const p = this.players.get(id);
     if (!p || !p.alive) return;
-    const now = Date.now();
+    const now = this.env.now();
     if (now - p.lastShock < SHOCK_CD) return;
     p.lastShock = now;
     p.boomAt = now;
@@ -155,7 +160,7 @@ export class RunnerRound {
       // Strong knockback away from the emitter (unclamped so it really shoves),
       // falling off with distance.
       const falloff = 0.4 + 0.6 * (1 - d / SHOCK_R);
-      const ux = d < 0.001 ? (Math.random() < 0.5 ? -1 : 1) : dx / d;
+      const ux = d < 0.001 ? (this.env.random() < 0.5 ? -1 : 1) : dx / d;
       q.kx += ux * SHOCK_PUSH * falloff;
       q.vy = Math.max(q.vy, SHOCK_POP * falloff);
     }
@@ -164,28 +169,28 @@ export class RunnerRound {
   private spawnObstaclesAhead(): void {
     const horizon = this.camX + VIEW_W + 8;
     while (this.nextObstacleX < horizon) {
-      const elapsed = (Date.now() - this.startedAt) / 1000;
-      const high = Math.random() < 0.38; // bias toward jump obstacles
+      const elapsed = (this.env.now() - this.startedAt) / 1000;
+      const high = this.env.random() < 0.38; // bias toward jump obstacles
       if (high) {
         this.obstacles.push({
           x: this.nextObstacleX,
           w: 1.6,
           h: HIGH_H,
           kind: "high",
-          variant: Math.floor(Math.random() * 2),
+          variant: Math.floor(this.env.random() * 2),
         });
       } else {
-        const w = Math.random() < 0.3 ? 2 : 1;
+        const w = this.env.random() < 0.3 ? 2 : 1;
         this.obstacles.push({
           x: this.nextObstacleX,
           w,
           h: LOW_H,
           kind: "low",
-          variant: Math.floor(Math.random() * 3),
+          variant: Math.floor(this.env.random() * 3),
         });
       }
       // Gap shrinks a little as the round goes on, but stays clearable.
-      const gap = Math.max(5.5, 9 - elapsed * 0.03) + Math.random() * 3.5;
+      const gap = Math.max(5.5, 9 - elapsed * 0.03) + this.env.random() * 3.5;
       this.nextObstacleX += gap;
     }
     // Drop obstacles that have scrolled well off the left.
@@ -263,7 +268,7 @@ export class RunnerRound {
   }
 
   private now(): number {
-    return Date.now();
+    return this.env.now();
   }
 
   private dots(): RunnerDot[] {
@@ -298,7 +303,7 @@ export class RunnerRound {
       dist: this.camX,
       alive: this.aliveCount(),
       meAlive: this.players.get(id)?.alive ?? false,
-      msLeft: Math.max(0, this.endsAt - Date.now()),
+      msLeft: Math.max(0, this.endsAt - this.env.now()),
     };
   }
 

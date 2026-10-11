@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { MINIGAME_NAMES, type MinigameType } from "@marvinho/shared";
-import { store, REQUIRED_PLAYERS } from "../state/store.js";
+import { MINIGAME_NAMES, MINIGAME_RULES, type MinigameType } from "@marvinho/shared";
+import { store } from "../state/store.js";
 import type { SeatState } from "../state/types.js";
 import { PRACTICE_ICON, PRACTICE_ORDER } from "./practiceGames.js";
 
@@ -37,7 +37,7 @@ export function SandboxMenu({ seat }: { seat: SeatState }) {
             >
               <span className="practice-emoji">{PRACTICE_ICON[game]}</span>
               <span className="practice-name">{MINIGAME_NAMES[game]}</span>
-              <span className="practice-req">{REQUIRED_PLAYERS[game]}P</span>
+              <span className="practice-req">{MINIGAME_RULES[game].minPlayers}P</span>
             </button>
           ))}
         </div>

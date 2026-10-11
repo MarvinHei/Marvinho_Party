@@ -1,94 +1,5 @@
-import type {
-  CodenamesView,
-  FindWordView,
-  GeoGeometry,
-  GeoStanding,
-  GuessCountryGuess,
-  LobbyView,
-  MinigameResult,
-  MinigameType,
-  PuzzleGame,
-  TeamDraftTeam,
-  PuzzleSpec,
-  BattleInitPayload,
-  BattleStatePayload,
-  HideInitPayload,
-  HideStatePayload,
-  PongInitPayload,
-  PongStatePayload,
-  RunnerInitPayload,
-  RunnerStatePayload,
-  SterbegeldInitPayload,
-  SterbegeldStatePayload,
-  PuzzleStanding,
-  SkribblSegment,
-  SkribblTeamsView,
-  SkribblView,
-  TetrisBoardSnapshot,
-  TetrisInitPayload,
-  TravleStanding,
-  WordleGuessResult,
-  WordleStanding,
-} from "@marvinho/shared";
-
-/** One incoming garbage event, tagged with a sequence so the engine dedupes. */
-export interface TetrisGarbage {
-  seq: number;
-  rows: number;
-  hole: number;
-}
-
-export interface PuzzleClientState {
-  game: PuzzleGame;
-  spec: PuzzleSpec;
-  endsAt: number;
-  roundSeconds: number;
-  solvedByMe: boolean;
-}
-
-export interface GuessCountryClientState {
-  geometry: GeoGeometry;
-  endsAt: number;
-  roundSeconds: number;
-  maxTries: number;
-  guesses: GuessCountryGuess[];
-  solved: boolean;
-}
-
-export interface TravleClientState {
-  startCode: string;
-  endCode: string;
-  endsAt: number;
-  roundSeconds: number;
-  named: { code: string; name: string; connected: boolean }[];
-  connected: boolean;
-}
-
-export interface PongClientState {
-  init: PongInitPayload;
-  /** Latest server snapshot of this player's match. */
-  snap: PongStatePayload | null;
-}
-
-export interface HideClientState {
-  init: HideInitPayload;
-  snap: HideStatePayload | null;
-}
-
-export interface BattleClientState {
-  init: BattleInitPayload;
-  snap: BattleStatePayload | null;
-}
-
-export interface RunnerClientState {
-  init: RunnerInitPayload;
-  snap: RunnerStatePayload | null;
-}
-
-export interface SterbegeldClientState {
-  init: SterbegeldInitPayload;
-  snap: SterbegeldStatePayload | null;
-}
+import type { LobbyView, MinigameResult, MinigameType, TeamDraftTeam } from "@marvinho/shared";
+import type { ActiveGame } from "../games/types.js";
 
 export type Screen = "home" | "lobby" | "game";
 export type MinigamePhase =
@@ -106,19 +17,6 @@ export interface WheelState {
   spinMs: number;
 }
 
-export interface WordleClientState {
-  wordLength: number;
-  maxGuesses: number;
-  endsAt: number;
-  /** This seat's own submitted guesses. */
-  guesses: WordleGuessResult[];
-  currentInput: string;
-  solved: boolean;
-  finished: boolean;
-  /** Transient inline message (e.g. "Not in word list"). */
-  message: string | null;
-}
-
 /** Serializable snapshot of one player seat (the Net lives outside the store). */
 export interface SeatState {
   id: string;
@@ -131,6 +29,8 @@ export interface SeatState {
 
   minigame: MinigameType | null;
   minigamePhase: MinigamePhase | null;
+  /** The running (or just-finished) minigame's own state; see games/registry. */
+  game: ActiveGame | null;
   /** True while the results podium waits for the host to confirm the advance. */
   resultsPending: boolean;
   /** Set during the on-board winner celebration (before the win screen). */
@@ -139,38 +39,12 @@ export interface SeatState {
   forfeited: boolean;
   /** The game whose explanation screen is showing (phase "explaining"). */
   explainGame: MinigameType | null;
-  standings: WordleStanding[];
   lastResult: MinigameResult | null;
-  wordle: WordleClientState | null;
   wheel: WheelState | null;
   /** Drafted teams for the current team game (shown for confirmation). */
   teamDraft: TeamDraftTeam[] | null;
   teamDraftGame: MinigameType | null;
   countdown: { game: MinigameType; endsAt: number } | null;
-  codenames: CodenamesView | null;
-  skribbl: SkribblView | null;
-  /** Accumulated drawn segments for the current turn (cleared on turn/clear). */
-  skribblStrokes: SkribblSegment[];
-  skribblTeams: SkribblTeamsView | null;
-  findword: FindWordView | null;
-  tetris: TetrisInitPayload | null;
-  /** Latest opponent board snapshots, keyed by playerId. */
-  tetrisBoards: TetrisBoardSnapshot[];
-  /** Pending garbage events (append-only; the engine consumes by seq). */
-  tetrisGarbage: TetrisGarbage[];
-  tetrisAlive: string[];
-  tetrisKos: string[];
-  puzzle: PuzzleClientState | null;
-  puzzleStandings: PuzzleStanding[];
-  guessCountry: GuessCountryClientState | null;
-  geoStandings: GeoStanding[];
-  travle: TravleClientState | null;
-  travleStandings: TravleStanding[];
-  pong: PongClientState | null;
-  hide: HideClientState | null;
-  battle: BattleClientState | null;
-  runner: RunnerClientState | null;
-  sterbegeld: SterbegeldClientState | null;
   /** Which player's POV this seat is watching read-only (null = none). */
   spectateTarget: string | null;
   /** Latest streamed snapshot of the watched player. */
@@ -194,38 +68,16 @@ export function initialSeat(id: string, label: string): SeatState {
     error: null,
     minigame: null,
     minigamePhase: null,
+    game: null,
     resultsPending: false,
     celebrateWinnerId: null,
     forfeited: false,
     explainGame: null,
-    standings: [],
     lastResult: null,
-    wordle: null,
     wheel: null,
     teamDraft: null,
     teamDraftGame: null,
     countdown: null,
-    codenames: null,
-    skribbl: null,
-    skribblStrokes: [],
-    skribblTeams: null,
-    findword: null,
-    tetris: null,
-    tetrisBoards: [],
-    tetrisGarbage: [],
-    tetrisAlive: [],
-    tetrisKos: [],
-    puzzle: null,
-    puzzleStandings: [],
-    guessCountry: null,
-    geoStandings: [],
-    travle: null,
-    travleStandings: [],
-    pong: null,
-    hide: null,
-    battle: null,
-    runner: null,
-    sterbegeld: null,
     spectateTarget: null,
     spectateFrame: null,
   };

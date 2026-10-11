@@ -1,27 +1,7 @@
-import type { MinigameType } from "@marvinho/shared";
+import { MINIGAME_RULES, type MinigameType } from "@marvinho/shared";
 import { Net } from "../net/Net.js";
+import type { ClientGameStates } from "../games/types.js";
 import { initialSeat, type SeatState, type StoreSnapshot } from "./types.js";
-
-/** How many players each minigame needs before it can be practiced. */
-export const REQUIRED_PLAYERS: Record<MinigameType, number> = {
-  wordle: 1,
-  zip: 1,
-  queens: 1,
-  sudoku: 1,
-  tango: 1,
-  skribbl: 2,
-  tetris: 2,
-  skribblteams: 4,
-  findword: 4,
-  codenames: 4,
-  guesscountry: 1,
-  travle: 1,
-  pong: 2,
-  verstecken: 3,
-  battle: 3,
-  runner: 2,
-  sterbegeld: 2,
-};
 
 let seatCounter = 0;
 const nextSeatId = () => `seat-${++seatCounter}`;
@@ -147,89 +127,24 @@ class GameStore {
     this.makePatcher(seatId)({ error });
   }
 
-  setWordleInput(seatId: string, input: string): void {
-    this.makePatcher(seatId)((prev) =>
-      prev.wordle ? { wordle: { ...prev.wordle, currentInput: input, message: null } } : {},
-    );
-  }
-
-  applyWordleResult(
+  /** Update this seat's state for a game it's currently in (no-op otherwise). */
+  updateGame<G extends MinigameType>(
     seatId: string,
-    result: import("@marvinho/shared").WordleGuessResult,
-    solved: boolean,
+    type: G | readonly G[],
+    fn: (state: ClientGameStates[G]) => ClientGameStates[G],
   ): void {
+    const types: readonly MinigameType[] = Array.isArray(type) ? type : [type];
     this.makePatcher(seatId)((prev) => {
-      if (!prev.wordle) return {};
-      const guesses = [...prev.wordle.guesses, result];
-      const finished = solved || guesses.length >= prev.wordle.maxGuesses;
-      return {
-        wordle: { ...prev.wordle, guesses, currentInput: "", solved, finished, message: null },
-      };
+      const g = prev.game;
+      if (!g || !g.state || !types.includes(g.type)) return {};
+      return { game: { ...g, state: fn(g.state as ClientGameStates[G]) } as SeatState["game"] };
     });
-  }
-
-  setWordleMessage(seatId: string, message: string): void {
-    this.makePatcher(seatId)((prev) =>
-      prev.wordle ? { wordle: { ...prev.wordle, message } } : {},
-    );
-  }
-
-  /** Append the drawer's own segment locally (the server won't echo it back). */
-  addSkribblStroke(
-    seatId: string,
-    seg: import("@marvinho/shared").SkribblSegment,
-  ): void {
-    this.makePatcher(seatId)((prev) => ({ skribblStrokes: [...prev.skribblStrokes, seg] }));
-  }
-
-  clearSkribblStrokes(seatId: string): void {
-    this.makePatcher(seatId)({ skribblStrokes: [] });
-  }
-
-  setPuzzleSolved(seatId: string): void {
-    this.makePatcher(seatId)((prev) =>
-      prev.puzzle ? { puzzle: { ...prev.puzzle, solvedByMe: true } } : {},
-    );
   }
 
   /** Start (or stop, with null) watching another player's read-only POV. */
   setSpectateTarget(seatId: string, targetId: string | null): void {
     this.net(seatId)?.spectateWatch(targetId);
     this.makePatcher(seatId)({ spectateTarget: targetId, spectateFrame: null });
-  }
-
-  addGuessCountryGuess(
-    seatId: string,
-    guess: import("@marvinho/shared").GuessCountryGuess,
-  ): void {
-    this.makePatcher(seatId)((prev) =>
-      prev.guessCountry
-        ? {
-            guessCountry: {
-              ...prev.guessCountry,
-              guesses: [...prev.guessCountry.guesses, guess],
-              solved: prev.guessCountry.solved || guess.correct,
-            },
-          }
-        : {},
-    );
-  }
-
-  addTravleNamed(
-    seatId: string,
-    entry: { code: string; name: string; connected: boolean },
-  ): void {
-    this.makePatcher(seatId)((prev) =>
-      prev.travle
-        ? {
-            travle: {
-              ...prev.travle,
-              named: [...prev.travle.named, entry],
-              connected: prev.travle.connected || entry.connected,
-            },
-          }
-        : {},
-    );
   }
 
   /**
@@ -255,7 +170,7 @@ class GameStore {
     }
     this.setActiveSeat(hostId);
 
-    const need = REQUIRED_PLAYERS[game];
+    const need = MINIGAME_RULES[game].minPlayers;
     const connected = () =>
       hostSeat()?.lobby?.players.filter((p) => p.connected).length ?? 1;
     let guard = 0;

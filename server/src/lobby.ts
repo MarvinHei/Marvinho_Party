@@ -1,62 +1,29 @@
 import type { Server } from "socket.io";
 import {
   GAME_CONFIG,
-  NO_TIMER_SECONDS,
+  MINIGAME_RULES,
   PLAYER_COLORS,
-  SKRIBBL_TEAMS_CONFIG,
-  TEAM_STYLES,
-  TETRIS_CONFIG,
   WHEEL_SPIN_MS,
-  WORDLE_CONFIG,
-  GEO_COUNTRIES,
-  WORLD_GEOMETRY,
-  borderableCountries,
-  canFormTeams,
-  countryByCode,
   defaultAppearance,
   defaultLobbySettings,
-  possibleTeamCounts,
-  rewardForRank,
-  shortestCountryPath,
   type Appearance,
   type ClientToServerEvents,
-  type CodenamesAssignment,
-  type CodenamesTeam,
-  type GeoStanding,
+  type GameInputMsg,
   type LobbyPhase,
   type LobbySettings,
   type LobbyView,
   type MinigameResult,
   type MinigameType,
   type PlayerView,
-  type PuzzleGame,
-  type PuzzleStanding,
-  type ScoreRow,
   type ServerToClientEvents,
-  type SkribblSegment,
   type TeamDraftTeam,
-  type TeamScore,
-  type TokenLook,
-  type TravleStanding,
-  type WordleStanding,
 } from "@marvinho/shared";
-import { WordleRound } from "./minigames/wordle.js";
-import { CodenamesRound } from "./minigames/codenames.js";
-import { SkribblGame } from "./minigames/skribbl.js";
-import { SkribblTeamsGame, type TeamSpec } from "./minigames/skribblTeams.js";
-import { FindWordGame } from "./minigames/findword.js";
-import { TetrisMatch } from "./minigames/tetris.js";
-import { PuzzleRound } from "./minigames/puzzleRound.js";
-import { generatePuzzle } from "./minigames/puzzleGen.js";
-import { GuessCountryRound } from "./minigames/guessCountry.js";
-import { TravleRound } from "./minigames/travle.js";
-import { PongRound } from "./minigames/pong.js";
-import { HideRound } from "./minigames/verstecken.js";
-import { BattleRound } from "./minigames/battle.js";
-import { RunnerRound } from "./minigames/runner.js";
-import { SterbegeldRound } from "./minigames/sterbegeld.js";
-
-const PUZZLE_GAMES: PuzzleGame[] = ["zip", "queens", "sudoku", "tango"];
+import { LobbyGameContext } from "./games/context.js";
+import { buildAssignment } from "./games/codenames.js";
+import { buildTeams } from "./games/draft.js";
+import { MINIGAMES } from "./games/registry.js";
+import type { Draft, Minigame, MinigameFactory } from "./games/types.js";
+import { pick, realEnv, type GameEnv } from "./minigames/env.js";
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 
@@ -72,9 +39,6 @@ interface Player {
   appearance: Appearance;
 }
 
-const teamName = (t: CodenamesTeam) => (t === "a" ? "Red" : "Blue");
-const teamColor = (t: CodenamesTeam) => (t === "a" ? "#e6394b" : "#3aa0ff");
-
 /** Timings for the pre-game sequence (ms). */
 const COUNTDOWN_MS = 5000;
 /** Fallback: auto-confirm the podium if the host never does (ms). */
@@ -87,23 +51,11 @@ const ADVANCE_MS = 4200;
 const CELEBRATE_MS = 2800;
 /** How long the winner celebration shows before returning to the lobby (ms). */
 const MATCH_END_MS = 9000;
-/** Each time a player solves a timed round, cut the remaining time to this… */
-const SOLVE_SHRINK = 0.55;
-/** …but never below this floor (ms), so latecomers still get a fair shot. */
-const SOLVE_MIN_MS = 8000;
-
-function shuffled<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
 
 /**
- * A single game session. Owns its players, the board, and the minigame loop.
- * Between minigames a ready vote gates progression, then a wheel picks the game.
+ * A single game session. Owns its players, the board, and the phase machine:
+ * lobby → wheel → (team draft) → (explanation) → countdown → minigame → results.
+ * The minigame itself is a pluggable {@link Minigame} from the registry.
  */
 export class Lobby {
   readonly id: string;
@@ -113,22 +65,11 @@ export class Lobby {
   private winnerId: string | null = null;
   private currentMinigame: MinigameType | null = null;
 
-  private wordle: WordleRound | null = null;
-  private codenames: CodenamesRound | null = null;
-  private skribbl: SkribblGame | null = null;
-  private skribblTeams: SkribblTeamsGame | null = null;
-  private findword: FindWordGame | null = null;
-  private tetris: TetrisMatch | null = null;
-  private puzzle: PuzzleRound | null = null;
-  private guessCountry: GuessCountryRound | null = null;
-  private travle: TravleRound | null = null;
-  private pong: PongRound | null = null;
-  private hide: HideRound | null = null;
-  private battle: BattleRound | null = null;
-  private runner: RunnerRound | null = null;
-  private sterbegeld: SterbegeldRound | null = null;
-  private pendingAssign: CodenamesAssignment | null = null;
-  private pendingTeams: TeamSpec[] | null = null;
+  /** The running minigame and its context (timers, emit helpers). */
+  private active: Minigame | null = null;
+  private activeCtx: LobbyGameContext<MinigameType> | null = null;
+  /** Teams drawn for the upcoming team game. */
+  private pendingDraft: Draft = {};
   private settings: LobbySettings = defaultLobbySettings();
   /** The game awaiting its explanation-screen ready-gate, if any. */
   private explainGame: MinigameType | null = null;
@@ -146,19 +87,9 @@ export class Lobby {
   private graceTimers = new Map<string, NodeJS.Timeout>();
   /** Players who forfeited the current round (forced to 0 points). */
   private forfeited = new Set<string>();
-  /** Re-sends the active minigame's init/state to a resuming socket. */
-  private resendActive: ((socketId: string, playerId: string) => void) | null = null;
   /** How long the (sequential) board advance runs for this round's rewards (ms). */
   private lastAdvanceMs = ADVANCE_MS;
   private timers: NodeJS.Timeout[] = [];
-  private interval: NodeJS.Timeout | null = null;
-  /** A reschedulable deadline for timed rounds that shrink when players solve. */
-  private roundEndTimer: NodeJS.Timeout | null = null;
-  private roundEndsAt = 0;
-  private roundExpire: (() => void) | null = null;
-  private roundShrinkable = false;
-  /** The Skribbl turn's finish timer (kept apart so a solve can pull it in). */
-  private skribblTurnTimer: NodeJS.Timeout | null = null;
 
   onEmpty?: () => void;
 
@@ -166,6 +97,8 @@ export class Lobby {
     private io: IO,
     id: string,
     host: { id: string; socketId: string; nickname: string; appearance?: Appearance },
+    /** Clock + RNG for this lobby's rounds (seeded in tests). */
+    private env: GameEnv = realEnv,
   ) {
     this.id = id;
     this.hostId = host.id;
@@ -195,16 +128,6 @@ export class Lobby {
 
   private connectedPlayers(): Player[] {
     return [...this.players.values()].filter((p) => p.connected);
-  }
-
-  /** Each connected player's look, for real-time game init payloads. */
-  private lookRoster(): TokenLook[] {
-    return this.connectedPlayers().map((p) => ({
-      id: p.id,
-      hair: p.appearance.hair,
-      hairColor: p.appearance.hairColor,
-      mouth: p.appearance.mouth,
-    }));
   }
 
   addPlayer(player: { id: string; socketId: string; nickname: string; appearance?: Appearance }): void {
@@ -247,7 +170,10 @@ export class Lobby {
     }
     this.broadcastLobby();
     // Re-send the active minigame so the client re-enters it (not just the board).
-    if (this.phase === "minigame") this.resendActive?.(socketId, playerId);
+    if (this.phase === "minigame" && this.active && this.currentMinigame) {
+      this.io.to(socketId).emit("minigame:start", { type: this.currentMinigame });
+      this.active.sync(playerId);
+    }
   }
 
   /** Change a player's character look (lobby phase only). */
@@ -283,14 +209,7 @@ export class Lobby {
       );
     }
 
-    if (this.hostId === playerId) {
-      const next = this.connectedPlayers()[0];
-      if (next) {
-        next.isHost = true;
-        this.hostId = next.id;
-      }
-    }
-
+    this.reassignHost(playerId);
     if (!this.hasConnectedPlayers()) {
       this.dispose();
       this.onEmpty?.();
@@ -314,13 +233,7 @@ export class Lobby {
     player.socketId = null;
     if (this.phase === "minigame") this.finalizeDisconnect(playerId);
     this.players.delete(playerId);
-    if (this.hostId === playerId) {
-      const next = this.connectedPlayers()[0];
-      if (next) {
-        next.isHost = true;
-        this.hostId = next.id;
-      }
-    }
+    this.reassignHost(playerId);
     if (!this.hasConnectedPlayers()) {
       this.dispose();
       this.onEmpty?.();
@@ -328,6 +241,15 @@ export class Lobby {
     }
     this.broadcastLobby();
     this.maybeStartFromReady();
+  }
+
+  private reassignHost(leavingId: string): void {
+    if (this.hostId !== leavingId) return;
+    const next = this.connectedPlayers()[0];
+    if (next) {
+      next.isHost = true;
+      this.hostId = next.id;
+    }
   }
 
   /** Give up the current minigame: take 0 points and leave the round. */
@@ -349,57 +271,7 @@ export class Lobby {
 
   /** Remove a player from whatever round is running so it can resolve. */
   private removeFromRound(playerId: string): void {
-    if (this.phase === "minigame") {
-      if (this.wordle) {
-        this.wordle.finishPlayer(playerId);
-        this.emitStandings();
-        this.maybeEndWordle();
-      }
-      if (this.phase === "minigame" && this.codenames) {
-        this.broadcastCodenames();
-      }
-      if (this.phase === "minigame" && this.skribbl) {
-        if (this.skribbl.currentDrawer === playerId) {
-          // The drawer left — end their turn and move on.
-          this.finishSkribblTurn();
-        } else {
-          this.broadcastSkribbl();
-        }
-      }
-      if (this.phase === "minigame" && this.skribblTeams) {
-        // If a drawer left, their team can't draw — the round timer resolves it.
-        this.broadcastSkribblTeams();
-      }
-      if (this.phase === "minigame" && this.findword) {
-        // A missing member is auto-filled at the attempt deadline (checkTimeouts).
-        this.broadcastFindword();
-      }
-      if (this.phase === "minigame" && this.tetris) {
-        if (this.tetris.kill(playerId)) {
-          this.broadcastTetrisPlayers();
-          if (this.tetris.isOver()) this.endTetris();
-        }
-      }
-      if (this.phase === "minigame" && this.puzzle) {
-        this.puzzle.finishPlayer(playerId);
-        this.emitPuzzleStandings();
-        if (this.puzzle.isComplete()) this.endPuzzle();
-      }
-      if (this.phase === "minigame" && this.guessCountry) {
-        this.guessCountry.finishPlayer(playerId);
-        this.emitGeoStandings();
-        if (this.guessCountry.isComplete()) this.endGuessCountry();
-      }
-      if (this.phase === "minigame" && this.travle) {
-        this.travle.finishPlayer(playerId);
-        this.emitTravleStandings();
-        if (this.travle.isComplete()) this.endTravle();
-      }
-      if (this.phase === "minigame" && this.sterbegeld) {
-        this.sterbegeld.finishPlayer(playerId);
-        if (this.sterbegeld.isComplete()) this.endSterbegeld();
-      }
-    }
+    if (this.phase === "minigame") this.active?.removePlayer?.(playerId);
   }
 
   isHost(playerId: string): boolean {
@@ -467,47 +339,6 @@ export class Lobby {
     this.broadcastLobby();
   }
 
-  /** Effective round length for a game, honoring the timer on/off toggle. */
-  private roundSecondsFor(game: MinigameType): number {
-    const s = this.settings.games[game];
-    return s.timerEnabled ? s.timerSeconds : NO_TIMER_SECONDS;
-  }
-
-  /**
-   * Arm a reschedulable deadline for a timed round. Returns the deadline (ms
-   * epoch). `shrinkable` allows {@link shrinkRoundTimer} to pull it in as
-   * players solve; it's disabled when the host turned the round timer off.
-   */
-  private armRoundTimer(game: MinigameType, seconds: number, onExpire: () => void): number {
-    if (this.roundEndTimer) clearTimeout(this.roundEndTimer);
-    this.roundEndsAt = Date.now() + seconds * 1000;
-    this.roundExpire = onExpire;
-    this.roundShrinkable = this.settings.games[game].timerEnabled;
-    this.roundEndTimer = setTimeout(() => {
-      this.roundEndTimer = null;
-      onExpire();
-    }, seconds * 1000);
-    return this.roundEndsAt;
-  }
-
-  /** A player solved: shorten the remaining time and tell clients the new end. */
-  private shrinkRoundTimer(): void {
-    if (!this.roundShrinkable || !this.roundEndTimer || !this.roundExpire) return;
-    const now = Date.now();
-    const remaining = this.roundEndsAt - now;
-    if (remaining <= SOLVE_MIN_MS) return;
-    const next = Math.max(SOLVE_MIN_MS, Math.round(remaining * SOLVE_SHRINK));
-    if (next >= remaining) return;
-    this.roundEndsAt = now + next;
-    clearTimeout(this.roundEndTimer);
-    const fn = this.roundExpire;
-    this.roundEndTimer = setTimeout(() => {
-      this.roundEndTimer = null;
-      fn();
-    }, next);
-    this.io.to(this.id).emit("minigame:timer", { endsAt: this.roundEndsAt });
-  }
-
   /** Host-only: remove another player while still in the lobby. */
   kickPlayer(hostId: string, targetId: string): void {
     if (!this.isHost(hostId)) throw new Error("Only the host can kick players.");
@@ -537,7 +368,8 @@ export class Lobby {
       throw new Error("Codenames needs 4 players.");
     }
     // Sandbox/practice skips the team draft + confirm — jump to the countdown
-    // (the start methods build teams on the fly when none were drafted).
+    // (team games build their teams on the fly when none were drafted).
+    this.pendingDraft = {};
     this.beginCountdown(game);
   }
 
@@ -561,33 +393,11 @@ export class Lobby {
   // --- wheel --------------------------------------------------------------
 
   private availableGames(): MinigameType[] {
-    const games: MinigameType[] = ["wordle", "guesscountry", "travle"];
     const n = this.connectedPlayers().length;
-    // Single-player puzzle races work at any size.
-    games.push(...PUZZLE_GAMES);
-    // Skribbl needs a drawer + at least one guesser.
-    if (n >= 2) games.push("skribbl");
-    // Tetris is versus — needs at least two players.
-    if (n >= 2) games.push("tetris");
-    // Pong pairs players into 1v1 matches (an odd one out faces a CPU).
-    if (n >= 2) games.push("pong");
-    // Verstecken: one seeker + at least two hiders.
-    if (n >= 3) games.push("verstecken");
-    // Battle Royale: a free-for-all with at least three players.
-    if (n >= 3) games.push("battle");
-    // Runner Rush: a side-scroll survival race for two or more.
-    if (n >= 2) games.push("runner");
-    // Sterbegeld: split-screen two-act score duel (up to 8, enforced by lobby cap).
-    if (n >= 2) games.push("sterbegeld");
-    // Team games need equal teams of ≥ 2 (e.g. 4, 6, 8, 9 players).
-    if (canFormTeams(n)) {
-      games.push("skribblteams");
-      games.push("findword");
-    }
-    // Codenames needs two real teams — even count, at least 4 players.
-    if (n >= 4 && n % 2 === 0) games.push("codenames");
-    // Drop any the host has blacklisted for this lobby.
-    return games.filter((g) => this.settings.games[g].enabled);
+    return (Object.keys(MINIGAME_RULES) as MinigameType[]).filter(
+      // Drop any the host has blacklisted for this lobby.
+      (g) => MINIGAME_RULES[g].playable(n) && this.settings.games[g].enabled,
+    );
   }
 
   private spinWheel(): void {
@@ -610,7 +420,7 @@ export class Lobby {
       const filtered = all.filter((g) => g !== prev);
       if (filtered.length > 0) options = filtered;
     }
-    const chosen = options[Math.floor(Math.random() * options.length)];
+    const chosen = pick(this.env.random, options);
     this.currentMinigame = chosen;
     this.phase = "spinning";
     this.io.to(this.id).emit("minigame:spin", { options, chosen, spinMs: WHEEL_SPIN_MS });
@@ -619,11 +429,9 @@ export class Lobby {
 
   private afterSpin(game: MinigameType): void {
     // Team games draw their teams first (with a confirm gate); others go on.
-    if (game === "codenames" || game === "skribblteams" || game === "findword") {
-      this.beginTeamDraft(game);
-    } else {
-      this.proceed(game);
-    }
+    this.pendingDraft = {};
+    if (MINIGAME_RULES[game].teams) this.beginTeamDraft(game);
+    else this.proceed(game);
   }
 
   /**
@@ -644,36 +452,24 @@ export class Lobby {
     this.broadcastLobby();
   }
 
-  private buildAssignment(): CodenamesAssignment {
-    const ids = shuffled(this.connectedPlayers().map((p) => p.id));
-    const half = Math.floor(ids.length / 2);
-    const a = ids.slice(0, half);
-    const b = ids.slice(half);
-    return {
-      a: { spymasterId: a[0], memberIds: a },
-      b: { spymasterId: b[0], memberIds: b },
-    };
-  }
-
   /**
    * Randomly draw the teams for a team game and show the draft, then wait for
    * everyone to confirm (or the host to force-start) before proceeding.
    */
   private beginTeamDraft(game: MinigameType): void {
     this.assignGame = game;
-    this.pendingAssign = null;
-    this.pendingTeams = null;
+    const ids = this.connectedPlayers().map((p) => p.id);
     let teams: TeamDraftTeam[];
-    if (game === "codenames") {
-      const a = this.buildAssignment();
-      this.pendingAssign = a;
+    if (MINIGAME_RULES[game].teams === "codenames") {
+      const a = buildAssignment(ids, this.env.random);
+      this.pendingDraft = { assignment: a };
       teams = [
         { id: "a", name: "Red", color: "#e6394b", memberIds: a.a.memberIds, spymasterId: a.a.spymasterId },
         { id: "b", name: "Blue", color: "#3aa0ff", memberIds: a.b.memberIds, spymasterId: a.b.spymasterId },
       ];
     } else {
-      const built = this.buildTeams();
-      this.pendingTeams = built;
+      const built = buildTeams(ids, this.env.random);
+      this.pendingDraft = { teams: built };
       teams = built.map((t) => ({ id: t.id, name: t.name, color: t.color, memberIds: t.memberIds }));
     }
     this.phase = "assigning";
@@ -691,1361 +487,48 @@ export class Lobby {
     this.spectateFrames.clear();
     this.spectateWatch.clear();
     this.phase = "countdown";
-    const endsAt = Date.now() + COUNTDOWN_MS;
+    const endsAt = this.env.now() + COUNTDOWN_MS;
     this.io.to(this.id).emit("minigame:countdown", { game, endsAt });
-    this.schedule(() => {
-      if (game === "codenames") this.startCodenames();
-      else if (game === "skribbl") this.startSkribbl();
-      else if (game === "skribblteams") this.startSkribblTeams();
-      else if (game === "findword") this.startFindword();
-      else if (game === "tetris") this.startTetris();
-      else if (game === "guesscountry") this.startGuessCountry();
-      else if (game === "travle") this.startTravle();
-      else if (game === "pong") this.startPong();
-      else if (game === "verstecken") this.startVerstecken();
-      else if (game === "battle") this.startBattle();
-      else if (game === "runner") this.startRunner();
-      else if (game === "sterbegeld") this.startSterbegeld();
-      else if (PUZZLE_GAMES.includes(game as PuzzleGame)) this.startPuzzle(game as PuzzleGame);
-      else this.startWordle();
-    }, COUNTDOWN_MS + 100);
+    this.schedule(() => this.startMinigame(game), COUNTDOWN_MS + 100);
   }
 
-  /** Split the connected players into `k` equal, randomly-chosen teams. */
-  private buildTeams(): TeamSpec[] {
-    const ids = shuffled(this.connectedPlayers().map((p) => p.id));
-    const counts = possibleTeamCounts(ids.length);
-    const k = counts[Math.floor(Math.random() * counts.length)] ?? 2;
-    const size = ids.length / k;
-    const teams: TeamSpec[] = [];
-    for (let i = 0; i < k; i++) {
-      const style = TEAM_STYLES[i % TEAM_STYLES.length];
-      teams.push({
-        id: `t${i}`,
-        name: style.name,
-        color: style.color,
-        memberIds: ids.slice(i * size, (i + 1) * size),
-      });
-    }
-    return teams;
-  }
+  // --- the running minigame ----------------------------------------------
 
-  private playerInfos(ids: string[]): { id: string; nickname: string; color: string }[] {
-    return ids.map((id) => {
-      const p = this.players.get(id);
-      return { id, nickname: p?.nickname ?? "?", color: p?.color ?? "#888" };
+  private startMinigame<G extends MinigameType>(type: G): void {
+    const ctx = new LobbyGameContext<G>({
+      io: this.io,
+      room: this.id,
+      type,
+      settings: this.settings,
+      draft: this.pendingDraft,
+      env: this.env,
+      seats: () => this.players.values(),
+      onFinish: (result) => this.concludeMinigame(result),
     });
-  }
-
-  /** Build a team-based results scoreboard from a ranked list of teams. */
-  private teamOutcome(
-    teams: { id: string; name: string; color: string; memberIds: string[] }[],
-    detailFor: (teamRank: number, t: { id: string }) => string,
-  ): { ranking: string[]; rewards: Record<string, number>; scoreboard: ScoreRow[]; teams: TeamScore[] } {
-    const ranking: string[] = [];
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = [];
-    const teamScores: TeamScore[] = [];
-    teams.forEach((t, teamRank) => {
-      // Top three teams get 3/2/1; any team beyond 3rd place gets 0.
-      const reward = Math.max(0, 3 - teamRank);
-      const won = teamRank === 0;
-      for (const id of t.memberIds) {
-        ranking.push(id);
-        rewards[id] = reward;
-        const player = this.players.get(id);
-        if (player) {
-          player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-        }
-        scoreboard.push({
-          playerId: id,
-          nickname: player?.nickname ?? "?",
-          color: player?.color ?? "#888",
-          rank: teamRank,
-          reward,
-          win: won,
-          detail: `${t.name} · ${detailFor(teamRank, t)}`,
-        });
-      }
-      teamScores.push({
-        team: t.id,
-        name: t.name,
-        color: t.color,
-        points: reward,
-        won,
-        members: t.memberIds.map((id) => ({
-          playerId: id,
-          nickname: this.players.get(id)?.nickname ?? "?",
-        })),
-      });
-    });
-    return { ranking, rewards, scoreboard, teams: teamScores };
-  }
-
-  // --- wordle -------------------------------------------------------------
-
-  private startWordle(): void {
-    const participants = this.connectedPlayers();
+    this.pendingDraft = {};
     this.phase = "minigame";
-    this.currentMinigame = "wordle";
-    this.wordle = new WordleRound(
-      participants.map((p) => p.id),
-      WORDLE_CONFIG.maxGuesses,
-    );
-    const seconds = this.roundSecondsFor("wordle");
-    const endsAt = this.armRoundTimer("wordle", seconds, () => {
-      if (this.wordle) {
-        this.wordle.finishAll();
-        this.endWordle();
-      }
-    });
-
-    this.io.to(this.id).emit("minigame:start", {
-      type: "wordle",
-      wordle: {
-        wordLength: WORDLE_CONFIG.wordLength,
-        maxGuesses: WORDLE_CONFIG.maxGuesses,
-        roundSeconds: seconds,
-        endsAt,
-      },
-    });
-    this.emitStandings();
-    this.resendActive = (sid) => {
-      this.io.to(sid).emit("minigame:start", {
-        type: "wordle",
-        wordle: { wordLength: WORDLE_CONFIG.wordLength, maxGuesses: WORDLE_CONFIG.maxGuesses, roundSeconds: seconds, endsAt: this.roundEndsAt },
-      });
-      this.emitStandings();
-    };
+    this.currentMinigame = type;
+    this.activeCtx = ctx as unknown as LobbyGameContext<MinigameType>;
+    const factory = MINIGAMES[type] as MinigameFactory<G>;
+    this.active = factory(ctx) as unknown as Minigame;
+    this.io.to(this.id).emit("minigame:start", { type });
+    this.active.start();
   }
 
-  handleWordleGuess(playerId: string, guess: string) {
-    if (this.phase !== "minigame" || !this.wordle) throw new Error("No active round.");
-    const outcome = this.wordle.guess(playerId, guess);
-    this.emitStandings();
-    // Every solve pulls the shared clock in.
-    if (outcome.solved) this.shrinkRoundTimer();
-    this.maybeEndWordle();
-    return outcome;
-  }
-
-  private maybeEndWordle(): void {
-    if (this.wordle && this.wordle.isComplete()) this.endWordle();
-  }
-
-  private endWordle(): void {
-    if (!this.wordle) return;
-    const round = this.wordle;
-    this.wordle = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      // Only players who solved the word advance.
-      const reward = s.solved ? rewardForRank(rank) : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id)!;
-      player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      const detail = s.solved
-        ? `${s.guessesUsed} ${s.guessesUsed === 1 ? "guess" : "guesses"} · ${(s.timeMs / 1000).toFixed(1)}s`
-        : "did not solve";
-      return {
-        playerId: id,
-        nickname: player.nickname,
-        color: player.color,
-        rank,
-        reward,
-        win: rank === 0 && s.solved,
-        detail,
-      };
-    });
-
-    this.concludeMinigame({ type: "wordle", ranking, rewards, scoreboard, reveal: round.answer });
-  }
-
-  private emitStandings(): void {
-    if (!this.wordle) return;
-    const round = this.wordle;
-    const ranking = round.ranking();
-    const standings: WordleStanding[] = round.standingsData().map((s) => {
-      const player = this.players.get(s.playerId)!;
-      const state = round.getPlayerState(s.playerId);
-      const done = state?.finishOrder !== null && state?.finishOrder !== undefined;
-      return {
-        playerId: s.playerId,
-        nickname: player.nickname,
-        color: player.color,
-        guessesUsed: s.guessesUsed,
-        solved: s.solved,
-        rank: done ? ranking.indexOf(s.playerId) : null,
-      };
-    });
-    this.io.to(this.id).emit("wordle:standings", standings);
-  }
-
-  // --- codenames ----------------------------------------------------------
-
-  private startCodenames(): void {
-    const assignment = this.pendingAssign ?? this.buildAssignment();
-    this.pendingAssign = null;
-
-    this.phase = "minigame";
-    this.currentMinigame = "codenames";
-    this.codenames = new CodenamesRound(assignment, this.settings.codenamesSize);
-
-    this.io.to(this.id).emit("minigame:start", { type: "codenames" });
-    this.broadcastCodenames();
-    this.resendActive = (sid, pid) => {
-      this.io.to(sid).emit("minigame:start", { type: "codenames" });
-      if (this.codenames) this.io.to(sid).emit("codenames:state", this.codenames.viewFor(pid));
-    };
-
-    this.schedule(() => {
-      if (this.codenames) {
-        this.codenames.finishByTimeout();
-        this.broadcastCodenames();
-        this.endCodenames();
-      }
-    }, this.roundSecondsFor("codenames") * 1000);
-  }
-
-  private broadcastCodenames(): void {
-    if (!this.codenames) return;
-    for (const p of this.players.values()) {
-      if (p.connected && p.socketId) {
-        this.io.to(p.socketId).emit("codenames:state", this.codenames.viewFor(p.id));
-      }
+  /**
+   * Route a player's input to the running minigame. Returns the handler's
+   * answer (for `game:request`); throws when there's no matching round.
+   */
+  handleInput(playerId: string, msg: GameInputMsg): unknown {
+    if (this.phase !== "minigame" || !this.active) throw new Error("No active round.");
+    if (!msg || typeof msg !== "object" || msg.game !== this.currentMinigame) {
+      throw new Error("No active round.");
     }
-  }
-
-  handleCodenamesClue(playerId: string, word: string, count: number): void {
-    if (this.phase !== "minigame" || !this.codenames) throw new Error("No active round.");
-    this.codenames.giveClue(playerId, word, count);
-    this.broadcastCodenames();
-  }
-
-  handleCodenamesGuess(playerId: string, index: number): void {
-    if (this.phase !== "minigame" || !this.codenames) throw new Error("No active round.");
-    this.codenames.guess(playerId, index);
-    this.broadcastCodenames();
-    if (this.codenames.isComplete()) this.endCodenames();
-  }
-
-  handleCodenamesEndTurn(playerId: string): void {
-    if (this.phase !== "minigame" || !this.codenames) throw new Error("No active round.");
-    this.codenames.endTurn(playerId);
-    this.broadcastCodenames();
-  }
-
-  private endCodenames(): void {
-    if (!this.codenames) return;
-    const round = this.codenames;
-    this.codenames = null;
-    this.clearTimers();
-
-    const winTeam = round.winner ?? "a";
-    const loseTeam: CodenamesTeam = winTeam === "a" ? "b" : "a";
-    const winners = round.teamMembers(winTeam);
-    const losers = round.teamMembers(loseTeam);
-    const ranking = [...winners, ...losers];
-
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const isWinner = winners.includes(id);
-      const reward = isWinner ? 2 : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) {
-        player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      }
-      const t = isWinner ? winTeam : loseTeam;
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: isWinner,
-        detail: `${teamName(t)} team · ${isWinner ? "won" : "lost"}`,
-      };
-    });
-
-    const teams: TeamScore[] = (["a", "b"] as CodenamesTeam[]).map((t) => ({
-      team: t,
-      name: teamName(t),
-      color: teamColor(t),
-      points: t === winTeam ? 3 : 1,
-      won: t === winTeam,
-      members: round.teamMembers(t).map((id) => ({
-        playerId: id,
-        nickname: this.players.get(id)?.nickname ?? "?",
-      })),
-    }));
-
-    this.concludeMinigame({
-      type: "codenames",
-      ranking,
-      rewards,
-      scoreboard,
-      teams,
-      reveal: `${teamName(winTeam)} team wins!`,
-    });
-  }
-
-  // --- skribbl ------------------------------------------------------------
-
-  private startSkribbl(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "skribbl";
-    this.skribbl = new SkribblGame(players, this.roundSecondsFor("skribbl"));
-    this.io.to(this.id).emit("minigame:start", { type: "skribbl" });
-    this.nextSkribblTurn();
-    this.resendActive = (sid, pid) => {
-      this.io.to(sid).emit("minigame:start", { type: "skribbl" });
-      if (this.skribbl) this.io.to(sid).emit("skribbl:state", this.skribbl.viewFor(pid));
-    };
-  }
-
-  private nextSkribblTurn(): void {
-    if (!this.skribbl) return;
-    this.skribbl.beginTurn();
-    this.io.to(this.id).emit("skribbl:clear");
-    this.broadcastSkribbl();
-    const total = this.roundSecondsFor("skribbl") * 1000;
-    // Reveal up to two hint letters across the turn (at ~1/3 and ~2/3).
-    this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.34));
-    this.schedule(() => this.revealSkribblHint(), Math.round(total * 0.67));
-    // The turn's finish lives in its own handle so a correct guess can shrink it.
-    this.skribblTurnTimer = setTimeout(() => {
-      this.skribblTurnTimer = null;
-      this.finishSkribblTurn();
-    }, total);
-  }
-
-  private revealSkribblHint(): void {
-    if (this.skribbl && this.skribbl.revealHint()) this.broadcastSkribbl();
-  }
-
-  private finishSkribblTurn(): void {
-    if (!this.skribbl) return;
-    this.clearTimers(); // cancel the turn timer (harmless if it already fired)
-    this.skribbl.endTurn();
-    this.broadcastSkribbl();
-    if (this.skribbl.hasNextTurn()) {
-      this.schedule(() => this.nextSkribblTurn(), 5000);
-    } else {
-      this.schedule(() => this.endSkribbl(), 5000);
-    }
-  }
-
-  private broadcastSkribbl(): void {
-    if (!this.skribbl) return;
-    for (const p of this.players.values()) {
-      if (p.connected && p.socketId) {
-        this.io.to(p.socketId).emit("skribbl:state", this.skribbl.viewFor(p.id));
-      }
-    }
-  }
-
-  handleSkribblGuess(playerId: string, text: string): { correct: boolean; close: boolean } {
-    if (this.phase !== "minigame" || !this.skribbl) throw new Error("No active round.");
-    const { correct, turnComplete, close } = this.skribbl.guess(playerId, text);
-    // Each correct guess pulls the turn's clock in (unless the timer is off).
-    if (correct && !turnComplete && this.settings.games.skribbl.timerEnabled) {
-      const newEnd = this.skribbl.shrinkTurn(SOLVE_SHRINK, SOLVE_MIN_MS);
-      if (newEnd && this.skribblTurnTimer) {
-        clearTimeout(this.skribblTurnTimer);
-        this.skribblTurnTimer = setTimeout(() => {
-          this.skribblTurnTimer = null;
-          this.finishSkribblTurn();
-        }, Math.max(0, newEnd - Date.now()));
-      }
-    }
-    this.broadcastSkribbl();
-    if (turnComplete) this.finishSkribblTurn();
-    return { correct, close };
-  }
-
-  handleSkribblDraw(playerId: string, seg: SkribblSegment): void {
-    if (this.phase !== "minigame" || !this.skribbl) return;
-    if (this.skribbl.currentDrawer !== playerId || this.skribbl.currentPhase !== "drawing") return;
-    const drawer = this.players.get(playerId);
-    // Relay to everyone except the drawer (who already drew it locally).
-    this.io.to(this.id).except(drawer?.socketId ?? "").emit("skribbl:draw", { seg });
-  }
-
-  handleSkribblClear(playerId: string): void {
-    if (this.phase !== "minigame" || !this.skribbl) return;
-    if (this.skribbl.currentDrawer !== playerId) return;
-    const drawer = this.players.get(playerId);
-    this.io.to(this.id).except(drawer?.socketId ?? "").emit("skribbl:clear");
-  }
-
-  private endSkribbl(): void {
-    if (!this.skribbl) return;
-    const game = this.skribbl;
-    this.skribbl = null;
-    this.clearTimers();
-
-    const ranking = game.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) {
-        player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      }
-      const pts = game.pointsFor(id);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0,
-        detail: `${pts} pts`,
-      };
-    });
-
-    this.concludeMinigame({ type: "skribbl", ranking, rewards, scoreboard });
-  }
-
-  // --- skribbl teams ------------------------------------------------------
-
-  private startSkribblTeams(): void {
-    const teams = this.pendingTeams ?? this.buildTeams();
-    this.pendingTeams = null;
-    const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
-    this.phase = "minigame";
-    this.currentMinigame = "skribblteams";
-    this.skribblTeams = new SkribblTeamsGame(teams, players, this.roundSecondsFor("skribblteams"));
-    this.io.to(this.id).emit("minigame:start", { type: "skribblteams" });
-    this.nextSkribblTeamsRound();
-    this.resendActive = (sid, pid) => {
-      this.io.to(sid).emit("minigame:start", { type: "skribblteams" });
-      if (this.skribblTeams) this.io.to(sid).emit("skribblteams:state", this.skribblTeams.viewFor(pid));
-    };
-  }
-
-  private nextSkribblTeamsRound(): void {
-    if (!this.skribblTeams) return;
-    this.skribblTeams.beginRound();
-    this.io.to(this.id).emit("skribblteams:clear");
-    this.broadcastSkribblTeams();
-    const total = this.roundSecondsFor("skribblteams") * 1000;
-    this.schedule(() => this.revealSkribblTeamsHint(), Math.round(total * 0.34));
-    this.schedule(() => this.revealSkribblTeamsHint(), Math.round(total * 0.67));
-    this.schedule(() => this.finishSkribblTeamsRound(), total);
-  }
-
-  private revealSkribblTeamsHint(): void {
-    if (this.skribblTeams && this.skribblTeams.revealHint()) this.broadcastSkribblTeams();
-  }
-
-  private finishSkribblTeamsRound(): void {
-    if (!this.skribblTeams) return;
-    this.clearTimers();
-    this.skribblTeams.endRound();
-    this.broadcastSkribblTeams();
-    if (this.skribblTeams.hasNextRound()) {
-      this.schedule(() => this.nextSkribblTeamsRound(), SKRIBBL_TEAMS_CONFIG.betweenRoundsMs);
-    } else {
-      this.schedule(() => this.endSkribblTeams(), SKRIBBL_TEAMS_CONFIG.betweenRoundsMs);
-    }
-  }
-
-  private broadcastSkribblTeams(): void {
-    if (!this.skribblTeams) return;
-    for (const p of this.players.values()) {
-      if (p.connected && p.socketId) {
-        this.io.to(p.socketId).emit("skribblteams:state", this.skribblTeams.viewFor(p.id));
-      }
-    }
-  }
-
-  handleSkribblTeamsGuess(playerId: string, text: string): { correct: boolean; close: boolean } {
-    if (this.phase !== "minigame" || !this.skribblTeams) throw new Error("No active round.");
-    const { correct, roundComplete, close } = this.skribblTeams.guess(playerId, text);
-    this.broadcastSkribblTeams();
-    if (roundComplete) this.finishSkribblTeamsRound();
-    return { correct, close };
-  }
-
-  handleSkribblTeamsDraw(playerId: string, seg: SkribblSegment): void {
-    if (this.phase !== "minigame" || !this.skribblTeams) return;
-    if (!this.skribblTeams.isDrawer(playerId) || this.skribblTeams.currentPhase !== "drawing") return;
-    const drawer = this.players.get(playerId);
-    // Relay only to teammates (excluding the drawer, who already drew locally).
-    for (const id of this.skribblTeams.teammateIds(playerId)) {
-      if (id === playerId) continue;
-      const mate = this.players.get(id);
-      if (mate?.connected && mate.socketId && mate.socketId !== drawer?.socketId) {
-        this.io.to(mate.socketId).emit("skribblteams:draw", { seg });
-      }
-    }
-  }
-
-  handleSkribblTeamsClear(playerId: string): void {
-    if (this.phase !== "minigame" || !this.skribblTeams) return;
-    if (!this.skribblTeams.isDrawer(playerId)) return;
-    for (const id of this.skribblTeams.teammateIds(playerId)) {
-      if (id === playerId) continue;
-      const mate = this.players.get(id);
-      if (mate?.connected && mate.socketId) {
-        this.io.to(mate.socketId).emit("skribblteams:clear");
-      }
-    }
-  }
-
-  private endSkribblTeams(): void {
-    if (!this.skribblTeams) return;
-    const game = this.skribblTeams;
-    this.skribblTeams = null;
-    this.clearTimers();
-
-    const results = game.results();
-    const out = this.teamOutcome(results, (rank, t) => {
-      const r = results.find((x) => x.id === t.id)!;
-      return rank === 0
-        ? `${r.solvedCount} guessed · winners`
-        : `${r.solvedCount} guessed`;
-    });
-    this.concludeMinigame({
-      type: "skribblteams",
-      ranking: out.ranking,
-      rewards: out.rewards,
-      scoreboard: out.scoreboard,
-      teams: out.teams,
-      reveal: `${results[0]?.name ?? "?"} team wins!`,
-    });
-  }
-
-  // --- find the word ------------------------------------------------------
-
-  private startFindword(): void {
-    const teams = this.pendingTeams ?? this.buildTeams();
-    this.pendingTeams = null;
-    const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
-    this.phase = "minigame";
-    this.currentMinigame = "findword";
-    this.findword = new FindWordGame(teams, players, this.roundSecondsFor("findword"));
-    this.io.to(this.id).emit("minigame:start", { type: "findword" });
-    this.broadcastFindword();
-    this.resendActive = (sid, pid) => {
-      this.io.to(sid).emit("minigame:start", { type: "findword" });
-      if (this.findword) this.io.to(sid).emit("findword:state", this.findword.viewFor(pid));
-    };
-    // Poll for per-team attempt deadlines.
-    this.interval = setInterval(() => {
-      if (!this.findword) return;
-      if (this.findword.checkTimeouts(Date.now())) this.broadcastFindword();
-      if (this.findword.isComplete()) this.endFindword();
-    }, 1000);
-  }
-
-  private broadcastFindword(): void {
-    if (!this.findword) return;
-    for (const p of this.players.values()) {
-      if (p.connected && p.socketId) {
-        this.io.to(p.socketId).emit("findword:state", this.findword.viewFor(p.id));
-      }
-    }
-  }
-
-  handleFindwordSubmit(playerId: string, word: string): { accepted: boolean } {
-    if (this.phase !== "minigame" || !this.findword) throw new Error("No active round.");
-    const res = this.findword.submit(playerId, word);
-    this.broadcastFindword();
-    if (this.findword.isComplete()) this.endFindword();
-    return res;
-  }
-
-  private endFindword(): void {
-    if (!this.findword) return;
-    const game = this.findword;
-    this.findword = null;
-    this.clearTimers();
-
-    const results = game.results();
-    const out = this.teamOutcome(results, (rank, t) => {
-      const r = results.find((x) => x.id === t.id)!;
-      if (!r.converged) return "did not converge";
-      return rank === 0
-        ? `"${(r.convergedWord ?? "").toUpperCase()}" in ${r.attempts} · winners`
-        : `"${(r.convergedWord ?? "").toUpperCase()}" in ${r.attempts}`;
-    });
-    this.concludeMinigame({
-      type: "findword",
-      ranking: out.ranking,
-      rewards: out.rewards,
-      scoreboard: out.scoreboard,
-      teams: out.teams,
-      reveal: `${results[0]?.name ?? "?"} team wins!`,
-    });
-  }
-
-  // --- tetris -------------------------------------------------------------
-
-  private startTetris(): void {
-    const players = this.playerInfos(this.connectedPlayers().map((p) => p.id));
-    this.phase = "minigame";
-    this.currentMinigame = "tetris";
-    this.tetris = new TetrisMatch(players);
-    const startsAt = Date.now() + 1200;
-    this.io.to(this.id).emit("minigame:start", { type: "tetris" });
-    this.io.to(this.id).emit("tetris:init", {
-      players: this.tetris.players(),
-      seed: this.tetris.seed,
-      startsAt,
-      rows: this.settings.tetrisRows,
-      cols: TETRIS_CONFIG.cols,
-    });
-    this.broadcastTetrisPlayers();
-    this.resendActive = (sid) => {
-      if (!this.tetris) return;
-      this.io.to(sid).emit("minigame:start", { type: "tetris" });
-      this.io.to(sid).emit("tetris:init", {
-        players: this.tetris.players(),
-        seed: this.tetris.seed,
-        startsAt: Date.now() + 600,
-        rows: this.settings.tetrisRows,
-        cols: TETRIS_CONFIG.cols,
-      });
-      this.broadcastTetrisPlayers();
-    };
-    // Hard time cap.
-    this.schedule(() => {
-      if (this.tetris) this.endTetris();
-    }, this.roundSecondsFor("tetris") * 1000);
-  }
-
-  private broadcastTetrisPlayers(): void {
-    if (!this.tetris) return;
-    this.io.to(this.id).emit("tetris:players", {
-      alive: this.tetris.aliveIds(),
-      kos: this.tetris.koIds(),
-    });
-  }
-
-  handleTetrisBoard(playerId: string, cells: string, lines: number): void {
-    if (this.phase !== "minigame" || !this.tetris) return;
-    this.tetris.updateBoard(playerId, cells, lines);
-    const snap = this.tetris.snapshotFor(playerId);
-    const sender = this.players.get(playerId);
-    // Relay to everyone else for the spectator mini-views.
-    this.io.to(this.id).except(sender?.socketId ?? "").emit("tetris:board", snap);
-  }
-
-  handleTetrisLines(playerId: string, lines: number): void {
-    if (this.phase !== "minigame" || !this.tetris) return;
-    const route = this.tetris.routeLines(playerId, lines);
-    if (!route) return;
-    const target = this.players.get(route.recipientId);
-    if (target?.connected && target.socketId) {
-      this.io.to(target.socketId).emit("tetris:garbage", { rows: route.rows, hole: route.hole });
-    }
-  }
-
-  handleTetrisTarget(playerId: string, targetId: string): void {
-    if (this.phase !== "minigame" || !this.tetris) return;
-    this.tetris.setTarget(playerId, targetId);
-  }
-
-  handleTetrisDead(playerId: string): void {
-    if (this.phase !== "minigame" || !this.tetris) return;
-    if (this.tetris.kill(playerId)) {
-      this.broadcastTetrisPlayers();
-      if (this.tetris.isOver()) this.endTetris();
-    }
-  }
-
-  private endTetris(): void {
-    if (!this.tetris) return;
-    const game = this.tetris;
-    this.tetris = null;
-    this.clearTimers();
-
-    const ranking = game.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const reward = rewardForRank(rank);
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) {
-        player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      }
-      const survived = game.isAlive(id);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0,
-        detail: `${game.linesFor(id)} lines · ${survived ? "survived" : "KO'd"}`,
-      };
-    });
-    this.concludeMinigame({ type: "tetris", ranking, rewards, scoreboard });
-  }
-
-  // --- puzzles (zip / queens / sudoku / tango) ---------------------------
-
-  private startPuzzle(game: PuzzleGame): void {
-    const participants = this.connectedPlayers();
-    const { spec } = generatePuzzle(game, this.settings.puzzleDifficulty[game]);
-    this.phase = "minigame";
-    this.currentMinigame = game;
-    this.puzzle = new PuzzleRound(participants.map((p) => p.id), spec);
-    const seconds = this.roundSecondsFor(game);
-    const endsAt = this.armRoundTimer(game, seconds, () => {
-      if (this.puzzle) {
-        this.puzzle.finishAll();
-        this.endPuzzle();
-      }
-    });
-
-    this.io.to(this.id).emit("minigame:start", { type: game });
-    this.io.to(this.id).emit("puzzle:start", { game, spec, endsAt, roundSeconds: seconds });
-    this.emitPuzzleStandings();
-    this.resendActive = (sid) => {
-      this.io.to(sid).emit("minigame:start", { type: game });
-      this.io.to(sid).emit("puzzle:start", { game, spec, endsAt: this.roundEndsAt, roundSeconds: seconds });
-      this.emitPuzzleStandings();
-    };
-  }
-
-  handlePuzzleSubmit(playerId: string, solution: number[]): { solved: boolean } {
-    if (this.phase !== "minigame" || !this.puzzle) throw new Error("No active round.");
-    const res = this.puzzle.submit(playerId, solution);
-    if (res.solved) {
-      this.emitPuzzleStandings();
-      this.shrinkRoundTimer();
-      if (this.puzzle.isComplete()) this.endPuzzle();
-    }
-    return res;
-  }
-
-  private emitPuzzleStandings(): void {
-    if (!this.puzzle) return;
-    const ranking = this.puzzle.ranking();
-    const standings: PuzzleStanding[] = [...this.players.values()].map((p) => ({
-      playerId: p.id,
-      nickname: p.nickname,
-      color: p.color,
-      solved: this.puzzle!.isSolved(p.id),
-      rank: this.puzzle!.isSolved(p.id) ? ranking.indexOf(p.id) : null,
-    }));
-    this.io.to(this.id).emit("puzzle:standings", standings);
-  }
-
-  private endPuzzle(): void {
-    if (!this.puzzle) return;
-    const round = this.puzzle;
-    this.puzzle = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      // Only players who actually solved the puzzle advance.
-      const reward = s.solved ? rewardForRank(rank) : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) {
-        player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      }
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0 && s.solved,
-        detail: s.solved ? `solved in ${(s.timeMs / 1000).toFixed(1)}s` : "did not solve",
-      };
-    });
-
-    this.concludeMinigame({ type: this.currentMinigame ?? "wordle", ranking, rewards, scoreboard });
-  }
-
-  // --- guess the country --------------------------------------------------
-
-  private startGuessCountry(): void {
-    const participants = this.connectedPlayers();
-    const answer = GEO_COUNTRIES[Math.floor(Math.random() * GEO_COUNTRIES.length)];
-    this.phase = "minigame";
-    this.currentMinigame = "guesscountry";
-    this.guessCountry = new GuessCountryRound(participants.map((p) => p.id), answer);
-    const seconds = this.roundSecondsFor("guesscountry");
-    const endsAt = this.armRoundTimer("guesscountry", seconds, () => {
-      if (this.guessCountry) {
-        this.guessCountry.finishAll();
-        this.endGuessCountry();
-      }
-    });
-
-    this.io.to(this.id).emit("minigame:start", { type: "guesscountry" });
-    // Send the silhouette geometry only — never the country's code/name.
-    this.io.to(this.id).emit("guesscountry:start", {
-      geometry: WORLD_GEOMETRY[answer.code],
-      endsAt,
-      roundSeconds: seconds,
-      maxTries: 8,
-    });
-    this.emitGeoStandings();
-    this.resendActive = (sid) => {
-      this.io.to(sid).emit("minigame:start", { type: "guesscountry" });
-      this.io.to(sid).emit("guesscountry:start", {
-        geometry: WORLD_GEOMETRY[answer.code],
-        endsAt: this.roundEndsAt,
-        roundSeconds: seconds,
-        maxTries: 8,
-      });
-      this.emitGeoStandings();
-    };
-  }
-
-  handleGuessCountryGuess(playerId: string, name: string) {
-    if (this.phase !== "minigame" || !this.guessCountry) throw new Error("No active round.");
-    const res = this.guessCountry.guess(playerId, name);
-    this.emitGeoStandings();
-    if (res.guess.correct) this.shrinkRoundTimer();
-    if (this.guessCountry.isComplete()) this.endGuessCountry();
-    return res;
-  }
-
-  private emitGeoStandings(): void {
-    if (!this.guessCountry) return;
-    const ranking = this.guessCountry.ranking();
-    const standings: GeoStanding[] = [...this.players.values()].map((p) => {
-      const s = this.guessCountry!.statsFor(p.id);
-      return {
-        playerId: p.id,
-        nickname: p.nickname,
-        color: p.color,
-        solved: s.solved,
-        tries: s.tries,
-        rank: s.solved ? ranking.indexOf(p.id) : null,
-      };
-    });
-    this.io.to(this.id).emit("guesscountry:standings", standings);
-  }
-
-  private endGuessCountry(): void {
-    if (!this.guessCountry) return;
-    const round = this.guessCountry;
-    this.guessCountry = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      // Only players who identified the country advance.
-      const reward = s.solved ? rewardForRank(rank) : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0 && s.solved,
-        detail: s.solved ? `${s.tries} ${s.tries === 1 ? "try" : "tries"}` : "did not solve",
-      };
-    });
-
-    this.concludeMinigame({
-      type: "guesscountry",
-      ranking,
-      rewards,
-      scoreboard,
-      reveal: round.answer.name,
-    });
-  }
-
-  // --- travle -------------------------------------------------------------
-
-  private pickTravlePair(): { start: string; end: string } {
-    const pool = borderableCountries();
-    for (let attempt = 0; attempt < 60; attempt++) {
-      const start = pool[Math.floor(Math.random() * pool.length)].code;
-      const end = pool[Math.floor(Math.random() * pool.length)].code;
-      if (start === end) continue;
-      const path = shortestCountryPath(start, end);
-      // 4–6 nodes → 2–4 countries to name in between: a good puzzle length.
-      if (path && path.length >= 4 && path.length <= 6) return { start, end };
-    }
-    // Fallback: any connected pair.
-    for (let attempt = 0; attempt < 60; attempt++) {
-      const start = pool[Math.floor(Math.random() * pool.length)].code;
-      const end = pool[Math.floor(Math.random() * pool.length)].code;
-      if (start !== end && shortestCountryPath(start, end)) return { start, end };
-    }
-    return { start: "FRA", end: "POL" };
-  }
-
-  private startTravle(): void {
-    const participants = this.connectedPlayers();
-    const { start, end } = this.pickTravlePair();
-    this.phase = "minigame";
-    this.currentMinigame = "travle";
-    this.travle = new TravleRound(participants.map((p) => p.id), start, end);
-    const seconds = this.roundSecondsFor("travle");
-    const endsAt = this.armRoundTimer("travle", seconds, () => {
-      if (this.travle) {
-        this.travle.finishAll();
-        this.endTravle();
-      }
-    });
-
-    this.io.to(this.id).emit("minigame:start", { type: "travle" });
-    this.io.to(this.id).emit("travle:start", { startCode: start, endCode: end, endsAt, roundSeconds: seconds });
-    this.emitTravleStandings();
-    this.resendActive = (sid) => {
-      this.io.to(sid).emit("minigame:start", { type: "travle" });
-      this.io.to(sid).emit("travle:start", { startCode: start, endCode: end, endsAt: this.roundEndsAt, roundSeconds: seconds });
-      this.emitTravleStandings();
-    };
-  }
-
-  handleTravleGuess(playerId: string, name: string) {
-    if (this.phase !== "minigame" || !this.travle) throw new Error("No active round.");
-    const res = this.travle.guess(playerId, name);
-    this.emitTravleStandings();
-    if (res.connected) this.shrinkRoundTimer();
-    if (this.travle.isComplete()) this.endTravle();
-    return res;
-  }
-
-  private emitTravleStandings(): void {
-    if (!this.travle) return;
-    const ranking = this.travle.ranking();
-    const standings: TravleStanding[] = [...this.players.values()].map((p) => {
-      const s = this.travle!.statsFor(p.id);
-      return {
-        playerId: p.id,
-        nickname: p.nickname,
-        color: p.color,
-        connected: s.connected,
-        count: s.count,
-        rank: s.connected ? ranking.indexOf(p.id) : null,
-      };
-    });
-    this.io.to(this.id).emit("travle:standings", standings);
-  }
-
-  private endTravle(): void {
-    if (!this.travle) return;
-    const round = this.travle;
-    this.travle = null;
-    this.clearTimers();
-
-    const startName = countryByCode(round.startCode)?.name ?? round.startCode;
-    const endName = countryByCode(round.endCode)?.name ?? round.endCode;
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      // Only players who connected the two countries advance.
-      const reward = s.connected ? rewardForRank(rank) : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0 && s.connected,
-        detail: s.connected ? `connected with ${s.count}` : `${s.count} named · no link`,
-      };
-    });
-
-    this.concludeMinigame({
-      type: "travle",
-      ranking,
-      rewards,
-      scoreboard,
-      reveal: `${startName} → ${endName}`,
-    });
-  }
-
-  // --- pong ---------------------------------------------------------------
-
-  private startPong(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "pong";
-    this.pong = new PongRound(players, this.settings.pongPoints);
-    this.io.to(this.id).emit("minigame:start", { type: "pong" });
-    // Tell each player which paddle they control and who they're up against.
-    for (const p of this.connectedPlayers()) {
-      const init = this.pong.initFor(p.id);
-      if (!init || !p.socketId) continue;
-      this.io.to(p.socketId).emit("pong:init", {
-        side: init.side,
-        target: this.settings.pongPoints,
-        self: { name: init.self.name, color: init.self.color },
-        opponent: { name: init.opponent.name, color: init.opponent.color },
-        vsCpu: init.vsCpu,
-      });
-    }
-    this.resendActive = (sid, pid) => {
-      const init = this.pong?.initFor(pid);
-      this.io.to(sid).emit("minigame:start", { type: "pong" });
-      if (init) {
-        this.io.to(sid).emit("pong:init", {
-          side: init.side,
-          target: this.settings.pongPoints,
-          self: { name: init.self.name, color: init.self.color },
-          opponent: { name: init.opponent.name, color: init.opponent.color },
-          vsCpu: init.vsCpu,
-        });
-      }
-    };
-    // 30 Hz physics + per-player state broadcast.
-    let last = Date.now();
-    this.interval = setInterval(() => {
-      if (!this.pong) return;
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.pong.tick(dt);
-      for (const p of this.connectedPlayers()) {
-        const s = this.pong.stateFor(p.id);
-        if (s && p.socketId) this.io.to(p.socketId).emit("pong:state", s);
-      }
-      if (this.pong.isComplete()) this.endPong();
-    }, 33);
-    // No timer: matches run until every duel has reached the target score.
-  }
-
-  handlePongMove(playerId: string, y: number): void {
-    if (this.phase !== "minigame" || !this.pong) return;
-    this.pong.setPaddle(playerId, y);
-  }
-
-  private endPong(): void {
-    if (!this.pong) return;
-    const round = this.pong;
-    this.pong = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      // Winners take 2 tiles, losers none.
-      const reward = s.won ? 2 : 0;
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: s.won,
-        detail: `${s.won ? "won" : "lost"} ${s.scored}–${s.conceded}${s.vsCpu ? " · vs CPU" : ""}`,
-      };
-    });
-
-    this.concludeMinigame({ type: "pong", ranking, rewards, scoreboard });
-  }
-
-  // --- verstecken ---------------------------------------------------------
-
-  private startVerstecken(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "verstecken";
-    const holdMs = 12000; // hiders get a head start before the seeker is loosed
-    // The round length scales with the lobby size: more hiders → a longer hunt.
-    const hunterSeconds = 30 + Math.max(0, players.length - 2) * 12;
-    const roundMs = holdMs + hunterSeconds * 1000;
-    this.hide = new HideRound(players, holdMs, roundMs);
-    this.io.to(this.id).emit("minigame:start", { type: "verstecken" });
-    const walls = this.hide.encodedWalls();
-    for (const p of this.connectedPlayers()) {
-      if (!p.socketId) continue;
-      this.io.to(p.socketId).emit("hide:init", {
-        cols: this.hide.arena.cols,
-        rows: this.hide.arena.rows,
-        walls,
-        role: this.hide.roleOf(p.id),
-        releaseAt: this.hide.releaseAt,
-        endsAt: this.hide.endsAt,
-        self: this.hide.infoOf(p.id),
-        appearances: this.lookRoster(),
-      });
-    }
-    this.resendActive = (sid, pid) => {
-      if (!this.hide) return;
-      this.io.to(sid).emit("minigame:start", { type: "verstecken" });
-      this.io.to(sid).emit("hide:init", {
-        cols: this.hide.arena.cols,
-        rows: this.hide.arena.rows,
-        walls: this.hide.encodedWalls(),
-        role: this.hide.roleOf(pid),
-        releaseAt: this.hide.releaseAt,
-        endsAt: this.hide.endsAt,
-        self: this.hide.infoOf(pid),
-        appearances: this.lookRoster(),
-      });
-    };
-    let last = Date.now();
-    this.interval = setInterval(() => {
-      if (!this.hide) return;
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.hide.tick(dt);
-      for (const p of this.connectedPlayers()) {
-        if (p.socketId) this.io.to(p.socketId).emit("hide:state", this.hide.stateFor(p.id));
-      }
-      if (this.hide.isComplete()) this.endVerstecken();
-    }, 50); // 20 Hz
-    // Hide n' Seek keeps its timer: if any hider survives to the buzzer, the
-    // hiders win — so the round must be able to end on time.
-    this.schedule(() => {
-      if (this.hide) this.endVerstecken();
-    }, roundMs);
-  }
-
-  handleHideMove(playerId: string, dx: number, dy: number): void {
-    if (this.phase === "minigame") this.hide?.setMove(playerId, dx, dy);
-  }
-
-  handleHideStab(playerId: string): void {
-    if (this.phase === "minigame") this.hide?.stab(playerId);
-  }
-
-  handleHideTeleport(playerId: string, x: number, y: number): void {
-    if (this.phase === "minigame") this.hide?.teleport(playerId, x, y);
-  }
-
-  handleHideAim(playerId: string, angle: number): void {
-    if (this.phase === "minigame") this.hide?.setAim(playerId, angle);
-  }
-
-  private endVerstecken(): void {
-    if (!this.hide) return;
-    const round = this.hide;
-    this.hide = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const stats = new Map(ranking.map((id) => [id, round.statsFor(id)]));
-    // If any hider makes it to the end, the hiders win: everyone but the seeker
-    // gets 1 tile. If the seeker catches them all, the seeker takes 2 and the
-    // hiders get nothing.
-    const anySurvived = [...stats.values()].some((s) => s.role !== "seeker" && s.survived);
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = stats.get(id)!;
-      let reward: number;
-      let win: boolean;
-      let detail: string;
-      if (s.role === "seeker") {
-        reward = anySurvived ? 0 : 2;
-        win = !anySurvived;
-        detail = anySurvived ? `seeker · caught ${s.catches}` : `caught everyone! · ${s.catches}`;
-      } else {
-        reward = anySurvived ? 1 : 0;
-        win = anySurvived;
-        detail = s.survived ? "survived!" : `caught after ${(s.survivedMs / 1000).toFixed(0)}s`;
-      }
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win,
-        detail,
-      };
-    });
-
-    this.concludeMinigame({ type: "verstecken", ranking, rewards, scoreboard });
-  }
-
-  // --- battle royale ------------------------------------------------------
-
-  private startBattle(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "battle";
-    const roundMs = this.roundSecondsFor("battle") * 1000;
-    this.battle = new BattleRound(players, roundMs);
-    this.io.to(this.id).emit("minigame:start", { type: "battle" });
-    const walls = this.battle.encodedWalls();
-    for (const p of this.connectedPlayers()) {
-      if (!p.socketId) continue;
-      this.io.to(p.socketId).emit("battle:init", {
-        cols: this.battle.arena.cols,
-        rows: this.battle.arena.rows,
-        walls,
-        endsAt: this.battle.endsAt,
-        self: this.battle.infoOf(p.id),
-        appearances: this.lookRoster(),
-      });
-    }
-    this.resendActive = (sid, pid) => {
-      if (!this.battle) return;
-      this.io.to(sid).emit("minigame:start", { type: "battle" });
-      this.io.to(sid).emit("battle:init", {
-        cols: this.battle.arena.cols,
-        rows: this.battle.arena.rows,
-        walls: this.battle.encodedWalls(),
-        endsAt: this.battle.endsAt,
-        self: this.battle.infoOf(pid),
-        appearances: this.lookRoster(),
-      });
-    };
-    let last = Date.now();
-    this.interval = setInterval(() => {
-      if (!this.battle) return;
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.battle.tick(dt);
-      for (const p of this.connectedPlayers()) {
-        if (p.socketId) this.io.to(p.socketId).emit("battle:state", this.battle.stateFor(p.id));
-      }
-      if (this.battle.isComplete()) this.endBattle();
-    }, 33); // 30 Hz
-    // No timer: the free-for-all runs until one player is left standing.
-  }
-
-  handleBattleMove(playerId: string, dx: number, dy: number): void {
-    if (this.phase === "minigame") this.battle?.setMove(playerId, dx, dy);
-  }
-
-  handleBattleShoot(playerId: string, angle: number): void {
-    if (this.phase === "minigame") this.battle?.shoot(playerId, angle);
-  }
-
-  private endBattle(): void {
-    if (!this.battle) return;
-    const round = this.battle;
-    this.battle = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      const reward = rewardForRank(rank);
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0 && s.survived,
-        detail: s.survived ? "last one standing" : `#${s.placement} out`,
-      };
-    });
-
-    this.concludeMinigame({ type: "battle", ranking, rewards, scoreboard });
-  }
-
-  // --- runner rush --------------------------------------------------------
-
-  private startRunner(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "runner";
-    const roundMs = this.roundSecondsFor("runner") * 1000;
-    this.runner = new RunnerRound(players, roundMs);
-    this.io.to(this.id).emit("minigame:start", { type: "runner" });
-    for (const p of this.connectedPlayers()) {
-      if (!p.socketId) continue;
-      this.io.to(p.socketId).emit("runner:init", {
-        viewW: this.runner.viewW,
-        viewH: this.runner.viewH,
-        groundH: this.runner.groundH,
-        shockCooldownMs: this.runner.shockCooldownMs,
-        endsAt: this.runner.endsAt,
-        self: this.runner.infoOf(p.id),
-        appearances: this.lookRoster(),
-      });
-    }
-    this.resendActive = (sid, pid) => {
-      if (!this.runner) return;
-      this.io.to(sid).emit("minigame:start", { type: "runner" });
-      this.io.to(sid).emit("runner:init", {
-        viewW: this.runner.viewW,
-        viewH: this.runner.viewH,
-        groundH: this.runner.groundH,
-        shockCooldownMs: this.runner.shockCooldownMs,
-        endsAt: this.runner.endsAt,
-        self: this.runner.infoOf(pid),
-        appearances: this.lookRoster(),
-      });
-    };
-    let last = Date.now();
-    this.interval = setInterval(() => {
-      if (!this.runner) return;
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.runner.tick(dt);
-      for (const p of this.connectedPlayers()) {
-        if (p.socketId) this.io.to(p.socketId).emit("runner:state", this.runner.stateFor(p.id));
-      }
-      if (this.runner.isComplete()) this.endRunner();
-    }, 33); // 30 Hz
-    // No timer: the race runs until only one runner remains.
-  }
-
-  handleRunnerMove(playerId: string, dir: number, duck: boolean): void {
-    if (this.phase === "minigame") this.runner?.setMove(playerId, dir, duck);
-  }
-
-  handleRunnerJump(playerId: string): void {
-    if (this.phase === "minigame") this.runner?.jump(playerId);
-  }
-
-  handleRunnerShock(playerId: string): void {
-    if (this.phase === "minigame") this.runner?.shock(playerId);
+    if (!this.players.has(playerId)) throw new Error("Not in this lobby.");
+    const handlers = this.active.inputs as Record<string, (id: string, payload: unknown) => unknown>;
+    const handler = Object.hasOwn(handlers, msg.kind) ? handlers[msg.kind] : undefined;
+    if (!handler) throw new Error("Unknown input.");
+    return handler(playerId, msg.payload);
   }
 
   // --- spectate (read-only POV of another player) -------------------------
@@ -2073,125 +556,15 @@ export class Lobby {
     if (cached && spec?.socketId) this.io.to(spec.socketId).emit("spectate:frame", { targetId, data: cached });
   }
 
-  private endRunner(): void {
-    if (!this.runner) return;
-    const round = this.runner;
-    this.runner = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      const reward = rewardForRank(rank);
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0 && s.survived,
-        detail: s.survived ? "reached the end" : `ran ${Math.round(s.distance)}m`,
-      };
-    });
-
-    this.concludeMinigame({ type: "runner", ranking, rewards, scoreboard });
-  }
-
-  // --- sterbegeld ---------------------------------------------------------
-
-  private startSterbegeld(): void {
-    const players = this.connectedPlayers().map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
-      color: p.color,
-    }));
-    this.phase = "minigame";
-    this.currentMinigame = "sterbegeld";
-    this.sterbegeld = new SterbegeldRound(players);
-    this.io.to(this.id).emit("minigame:start", { type: "sterbegeld" });
-    const roster = players.map((p) => ({ id: p.id, name: p.nickname, color: p.color }));
-    for (const p of this.connectedPlayers()) {
-      if (!p.socketId) continue;
-      this.io.to(p.socketId).emit("sterbegeld:init", {
-        players: roster,
-        appearances: this.lookRoster(),
-        self: this.sterbegeld.infoOf(p.id),
-      });
-    }
-    this.resendActive = (sid, pid) => {
-      if (!this.sterbegeld) return;
-      this.io.to(sid).emit("minigame:start", { type: "sterbegeld" });
-      this.io.to(sid).emit("sterbegeld:init", {
-        players: roster,
-        appearances: this.lookRoster(),
-        self: this.sterbegeld.infoOf(pid),
-      });
-    };
-    let last = Date.now();
-    this.interval = setInterval(() => {
-      if (!this.sterbegeld) return;
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.sterbegeld.tick(dt);
-      // Split-screen: everyone sees the same full state (all POVs).
-      const state = this.sterbegeld.state();
-      this.io.to(this.id).emit("sterbegeld:state", state);
-      if (this.sterbegeld.isComplete()) this.endSterbegeld();
-    }, 33); // 30 Hz
-    // No timer: the round runs until everyone has been eliminated in both acts.
-  }
-
-  handleSterbegeldSign(playerId: string): void {
-    if (this.phase === "minigame") this.sterbegeld?.sign(playerId);
-  }
-
-  handleSterbegeldMove(playerId: string, dir: number): void {
-    if (this.phase === "minigame") this.sterbegeld?.setMove(playerId, dir);
-  }
-
-  private endSterbegeld(): void {
-    if (!this.sterbegeld) return;
-    const round = this.sterbegeld;
-    this.sterbegeld = null;
-    this.clearTimers();
-
-    const ranking = round.ranking();
-    const rewards: Record<string, number> = {};
-    const scoreboard: ScoreRow[] = ranking.map((id, rank) => {
-      const s = round.statsFor(id);
-      const reward = rewardForRank(rank);
-      rewards[id] = reward;
-      const player = this.players.get(id);
-      if (player) player.position = Math.min(player.position + reward, GAME_CONFIG.boardLength);
-      return {
-        playerId: id,
-        nickname: player?.nickname ?? "?",
-        color: player?.color ?? "#888",
-        rank,
-        reward,
-        win: rank === 0,
-        detail: `${s.total.toLocaleString()} pts · ${s.delaScore.toLocaleString()} + ${s.waitScore.toLocaleString()}`,
-      };
-    });
-
-    this.concludeMinigame({ type: "sterbegeld", ranking, rewards, scoreboard });
-  }
-
   // --- shared minigame conclusion ----------------------------------------
 
   private concludeMinigame(result: MinigameResult): void {
-    // Forfeiters take 0 — undo any reward the round handed them.
+    this.active = null;
+    this.activeCtx = null;
+    this.clearTimers();
+
+    // Forfeiters take 0, whatever the round handed them.
     for (const id of this.forfeited) {
-      const given = result.rewards[id] ?? 0;
-      if (given > 0) {
-        const p = this.players.get(id);
-        if (p) p.position = Math.max(0, p.position - given);
-      }
       result.rewards[id] = 0;
       const row = result.scoreboard.find((r) => r.playerId === id);
       if (row) {
@@ -2202,12 +575,17 @@ export class Lobby {
     }
 
     if (this.sandbox) {
-      // Practice mode: undo any board movement, no winner, back to the menu.
+      // Practice mode: no board movement, no winner, back to the menu.
       for (const p of this.players.values()) p.position = 0;
       this.phase = "intermission";
       this.resetReady();
       this.io.to(this.id).emit("minigame:ended", { result, lobby: this.toView() });
       return;
+    }
+
+    for (const [id, reward] of Object.entries(result.rewards)) {
+      const p = this.players.get(id);
+      if (p) p.position = Math.min(p.position + reward, GAME_CONFIG.boardLength);
     }
 
     // A winner is handled AFTER the board advance so players see the winning hop
@@ -2322,24 +700,13 @@ export class Lobby {
   private clearTimers(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    if (this.roundEndTimer) {
-      clearTimeout(this.roundEndTimer);
-      this.roundEndTimer = null;
-    }
-    this.roundExpire = null;
-    this.roundShrinkable = false;
-    if (this.skribblTurnTimer) {
-      clearTimeout(this.skribblTurnTimer);
-      this.skribblTurnTimer = null;
-    }
   }
 
   dispose(): void {
     this.clearTimers();
+    this.activeCtx?.dispose();
+    this.activeCtx = null;
+    this.active = null;
     for (const t of this.graceTimers.values()) clearTimeout(t);
     this.graceTimers.clear();
   }

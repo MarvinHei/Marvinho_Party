@@ -1,0 +1,141 @@
+import { useEffect, useRef, useState } from "react";
+import { MINIGAME_NAMES } from "@marvinho/shared";
+import { store } from "../../state/store.js";
+import { sfx, audio } from "../../audio/audio.js";
+import { TimerTick } from "../../audio/TimerTick.js";
+import type { SeatState } from "../../state/types.js";
+import { gameState } from "../state.js";
+import { PUZZLE_TYPES, solved as markSolved } from "./logic.js";
+import { ZipBoard } from "./boards/ZipBoard.js";
+import { QueensBoard } from "./boards/QueensBoard.js";
+import { SudokuBoard } from "./boards/SudokuBoard.js";
+import { TangoBoard } from "./boards/TangoBoard.js";
+import { SpectateBar } from "../../components/SpectateBar.js";
+
+export function PuzzlePanel({ seat }: { seat: SeatState }) {
+  const p = gameState(seat, ...PUZZLE_TYPES);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(i);
+  }, []);
+
+  // Per-game background track: Mini-Sudoku gets its own theme; Zip, Tango and
+  // Queens share the Queens theme. Restores the idle loop when the round ends.
+  const puzzleGame = p?.game;
+  useEffect(() => {
+    if (!puzzleGame) return;
+    const url = puzzleGame === "sudoku" ? "/audio/minisudoku.mp3" : "/audio/queens.mp3";
+    audio.startGameMusic(url);
+    return () => audio.stopGameMusic();
+  }, [puzzleGame]);
+
+  if (!p) {
+    return (
+      <div className="center-stage">
+        <div className="panel"><h2 className="pixel">Loading puzzle…</h2></div>
+      </div>
+    );
+  }
+
+  const net = store.net(seat.id);
+  const solved = p.solvedByMe;
+  const game = p.game;
+  const secondsLeft = Math.max(0, Math.ceil((p.endsAt - Date.now()) / 1000));
+
+  async function onSolved(solution: number[]) {
+    if (!net || solved) return;
+    try {
+      const res = await net.request(game, "submit", { solution });
+      if (res.solved) {
+        store.updateGame(seat.id, PUZZLE_TYPES, markSolved);
+        sfx("correct");
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // While playing, stream our board so others can watch our POV read-only.
+  const lastData = useRef("");
+  function pushView(cells: number[]) {
+    const data = JSON.stringify(cells);
+    if (data === lastData.current) return;
+    lastData.current = data;
+    store.net(seat.id)?.spectatePush(data);
+  }
+
+  // When we're done, we may be watching someone else's board (read-only).
+  const watching = solved ? seat.spectateTarget : null;
+  const spectateView =
+    watching && seat.spectateFrame?.targetId === watching
+      ? (JSON.parse(seat.spectateFrame.data) as number[])
+      : undefined;
+  const watchingName = watching
+    ? p.standings.find((s) => s.playerId === watching)?.nickname ?? "player"
+    : null;
+
+  const spec = p.spec;
+  const boardExtra = spectateView !== undefined ? { view: spectateView } : { onView: pushView };
+  const board =
+    spec.game === "zip" ? (
+      <ZipBoard puzzle={spec.zip} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    ) : spec.game === "queens" ? (
+      <QueensBoard puzzle={spec.queens} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    ) : spec.game === "sudoku" ? (
+      <SudokuBoard puzzle={spec.sudoku} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    ) : (
+      <TangoBoard puzzle={spec.tango} disabled={solved} onSolved={onSolved} {...boardExtra} />
+    );
+
+  const timed = seat.lobby?.settings.games[p.game]?.timerEnabled ?? true;
+  const lowTime = timed && secondsLeft <= 10 && secondsLeft > 0 && !solved;
+
+  return (
+    <div className="puzzle-wrap">
+      {timed && <TimerTick seconds={secondsLeft} active={lowTime} />}
+      <div className="puzzle-top">
+        <div className="puzzle-name pixel">{MINIGAME_NAMES[p.game]}</div>
+        {timed && <div className={`puzzle-timer pixel${lowTime ? " low" : ""}`}>⏱ {secondsLeft}s</div>}
+      </div>
+
+      <div className="puzzle-body">
+        <div className="puzzle-board-col">
+          {watching && <div className="puzzle-watching pixel">👁 Watching {watchingName}</div>}
+          <div className="puzzle-board-frame">
+            {board}
+            {solved && !watching && (
+              <div className="puzzle-solved">
+                Solved! 🎉<span>waiting for others…</span>
+              </div>
+            )}
+            {watching && spectateView === undefined && (
+              <div className="puzzle-solved">Loading {watchingName}'s board…</div>
+            )}
+          </div>
+          {solved && (
+            <SpectateBar
+              seat={seat}
+              people={p.standings.map((s) => ({
+                playerId: s.playerId,
+                nickname: s.nickname,
+                color: s.color,
+              }))}
+            />
+          )}
+        </div>
+
+        <div className="puzzle-standings">
+          <div className="p-standings-title pixel">Standings</div>
+          {p.standings.map((s) => (
+            <div key={s.playerId} className={`p-standing${s.solved ? " solved" : ""}`}>
+              <span className="swatch" style={{ background: s.color }} />
+              <span className="sk-nick">{s.nickname}</span>
+              <span className="p-rank">{s.solved ? `#${(s.rank ?? 0) + 1}` : "…"}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
